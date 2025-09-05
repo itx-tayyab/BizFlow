@@ -14,4 +14,4 @@ app.use(express.urlencoded())
 app.use(express.json())
 app.use(cookieParser())
 
-export {app}
+export { app }
