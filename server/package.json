@@ -21,6 +21,7 @@
     "prettier": "^3.6.2"
   },
   "dependencies": {
+    "@prisma/client": "^7.7.0",
     "bcrypt": "^6.0.0",
     "cloudinary": "^2.7.0",
     "cookie-parser": "^1.4.7",
@@ -29,6 +30,7 @@
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "prisma": "^7.7.0"
   }
 }
