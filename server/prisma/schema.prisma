@@ -14,8 +14,8 @@ model Business {
   id        String   @id @default(uuid())
   name      String
   ownerId   String
-  owner     User     @relation(fields: [ownerId], references: [id])
-  users     User[]
+  owner     User     @relation("BusinessOwner", fields: [ownerId], references: [id])
+  users     User[]   @relation("BusinessUsers")
   customers Customer[]
   products  Product[]
   orders    Order[]
@@ -23,14 +23,17 @@ model Business {
 }
 
 model User {
-  id         String   @id @default(uuid())
-  name       String
-  email      String   @unique
-  password   String
-  role       Role
-  businessId String
-  business   Business @relation(fields: [businessId], references: [id])
-  createdAt  DateTime @default(now())
+  id               String    @id @default(uuid())
+  name             String
+  email            String    @unique
+  password         String
+  role             Role
+  businessId       String
+  business         Business  @relation("BusinessUsers", fields: [businessId], references: [id])
+  ownedBusinesses  Business[] @relation("BusinessOwner")
+  createdOrders    Order[]   @relation("OrderCreator")
+  receivedPayments Payment[] @relation("PaymentReceiver")
+  createdAt        DateTime  @default(now())
 }
 
 model Customer {
@@ -51,6 +54,7 @@ model Product {
   stock      Int
   businessId String
   business   Business @relation(fields: [businessId], references: [id])
+  orderItems OrderItem[]
   createdAt  DateTime @default(now())
 }
 
@@ -60,14 +64,14 @@ model Order {
   businessId  String
   status      OrderStatus
   totalAmount Float
-  createdBy   String   // userId (owner/staff)
+  createdBy   String?   // userId (owner/staff)
 
-  creator   User @relation(fields: [createdBy], references: [id])
+  creator   User? @relation("OrderCreator", fields: [createdBy], references: [id])
   customer Customer @relation(fields: [customerId], references: [id])
   business Business @relation(fields: [businessId], references: [id])
   items    OrderItem[]
   payments Payment[]
-
+  paymentStatus PaymentStatus @default(UNPAID)
   createdAt DateTime @default(now())
 }
 
@@ -78,7 +82,7 @@ model OrderItem {
   quantity  Int
   price     Float
 
-  order   Order   @relation(fields: [orderId], references: [id])
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])
 }
 
@@ -88,10 +92,10 @@ model Payment {
   amount    Float
   method    PaymentMethod
   receivedBy String  // userId
-  receiver   User @relation(fields: [receivedBy], references: [id])
+  receiver   User @relation("PaymentReceiver", fields: [receivedBy], references: [id])
   createdAt DateTime @default(now())
 
-  order Order @relation(fields: [orderId], references: [id])
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
 
 enum OrderStatus {
@@ -109,4 +113,10 @@ enum PaymentMethod {
   CASH
   BANK
   ONLINE
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
 }
