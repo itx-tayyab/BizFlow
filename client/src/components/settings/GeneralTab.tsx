@@ -1,0 +1,84 @@
+import { UploadCloud, AlertCircle } from "lucide-react";
+
+export default function GeneralTab({ business }: { business: any }) {
+  return (
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-8">
+      {/* Brand Identity */}
+      <section>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-slate-900">Brand Identity</h2>
+          <p className="text-sm text-slate-500">Your logo and business name will appear on digital receipts.</p>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col sm:flex-row gap-8 items-start">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-20 h-20 rounded-full bg-slate-50 border border-dashed border-slate-300 flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:border-blue-400 hover:text-blue-500 transition-colors cursor-pointer group">
+              <UploadCloud className="w-6 h-6 group-hover:scale-110 transition-transform" />
+            </div>
+            <span className="text-xs font-medium text-slate-500">Upload Logo</span>
+          </div>
+          <div className="flex-1 w-full space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Business Name</label>
+              <input type="text" defaultValue={business.name} className="w-full border border-slate-300 rounded-lg py-2 px-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm text-sm" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr className="border-slate-200" />
+
+      {/* Contact & Region */}
+      <section>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-slate-900">Contact & Region</h2>
+          <p className="text-sm text-slate-500">Where are you located and how can customers reach you?</p>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Phone Number</label>
+              <input type="text" defaultValue={business.phone} className="w-full border border-slate-300 rounded-lg py-2 px-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Email Address</label>
+              <input type="email" defaultValue={business.email} className="w-full border border-slate-300 rounded-lg py-2 px-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Base Currency</label>
+              <select defaultValue={business.currency} className="w-full border border-slate-300 rounded-lg py-2 px-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm text-sm bg-white cursor-pointer">
+                <option value="PKR">PKR (Pakistani Rupee)</option>
+                <option value="USD">USD (US Dollar)</option>
+                <option value="AED">AED (Emirati Dirham)</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Shop Address</label>
+            <textarea rows={3} defaultValue={business.address} className="w-full border border-slate-300 rounded-lg py-2 px-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm text-sm resize-none" />
+          </div>
+        </div>
+      </section>
+
+      <hr className="border-slate-200" />
+
+      {/* Danger Zone */}
+      <section>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-rose-600">Danger Zone</h2>
+          <p className="text-sm text-slate-500">Irreversible and destructive actions.</p>
+        </div>
+        <div className="bg-rose-50/50 rounded-xl border border-rose-200 overflow-hidden">
+          <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Delete Workspace</h3>
+              <p className="text-sm text-slate-500 mt-1">Permanently delete your workspace and all data. This cannot be undone.</p>
+            </div>
+            <button className="px-4 py-2 bg-rose-600 text-white text-sm font-medium rounded-lg hover:bg-rose-700 transition-colors shadow-sm whitespace-nowrap">
+              Delete Workspace
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
