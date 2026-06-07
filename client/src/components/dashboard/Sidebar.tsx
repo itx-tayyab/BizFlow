@@ -8,15 +8,17 @@ import {
   ShoppingCart, 
   Users, 
   Package, 
-  Settings 
+  Settings,
+  LogOut,
+  ShieldCheck
 } from "lucide-react";
 
 const navItems =[
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Orders", href: "/orders", icon: ShoppingCart }, 
-  { name: "Products", href: "/products", icon: Package },   
-  { name: "Customers", href: "/customers", icon: Users },   
-  { name: "Settings", href: "/settings", icon: Settings },  
+  { name: "Orders", href: "/orders", icon: ShoppingCart },
+  { name: "Products", href: "/products", icon: Package },
+  { name: "Customers", href: "/customers", icon: Users },
+  { name: "Settings", href: "/settings", icon: Settings },
 ];
 
 export default function Sidebar() {
@@ -24,9 +26,10 @@ export default function Sidebar() {
 
   return (
     <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 min-h-screen fixed left-0 top-0 z-20">
-      {/* Brand Logo */}
-      <div className="h-16 flex items-center gap-2 px-6 border-b border-slate-200">
-        <div className="bg-blue-600 p-1.5 rounded-lg">
+      
+      {/* 🟢 Brand Logo */}
+      <div className="h-16 flex items-center gap-3 px-6 border-b border-slate-200 shrink-0">
+        <div className="bg-blue-600 p-1.5 rounded-lg shadow-sm shadow-blue-200">
           <Store className="w-5 h-5 text-white" />
         </div>
         <span className="text-xl font-bold tracking-tight text-slate-900">
@@ -34,8 +37,8 @@ export default function Sidebar() {
         </span>
       </div>
 
-      {/* Navigation Links */}
-      <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+      {/* 🟢 Navigation Links */}
+      <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
         {navItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
           const Icon = item.icon;
@@ -44,31 +47,53 @@ export default function Sidebar() {
             <Link
               key={item.name}
               href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 isActive 
-                  ? "bg-blue-50 text-blue-700" 
+                  ? "bg-blue-50 text-blue-700 shadow-sm border border-blue-100/50" 
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
               }`}
             >
-              <Icon className={`w-5 h-5 ${isActive ? "text-blue-700" : "text-slate-400"}`} />
+              <Icon className={`w-4 h-4 ${isActive ? "text-blue-700" : "text-slate-400"}`} />
               {item.name}
             </Link>
           );
         })}
       </nav>
 
-      {/* User Profile Summary (Bottom of Sidebar) */}
-      <div className="p-4 border-t border-slate-200">
-        <div className="flex items-center gap-3 px-3 py-2">
-          <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-sm">
-            A
+      {/* 🟢 THE EXPANDED USER INFORMATION CARD */}
+      <div className="p-4 border-t border-slate-200 bg-slate-50/50">
+        <div className="bg-white border border-slate-200 p-3.5 rounded-2xl shadow-sm">
+          
+          {/* User Info */}
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm shrink-0 border border-blue-200">
+              AK
+            </div>
+            <div className="flex flex-col overflow-hidden">
+              <span className="text-sm font-bold text-slate-900 truncate">
+                Ali Khan
+              </span>
+              <span className="text-[11px] font-medium text-slate-500 truncate">
+                ali@alfatah.pk
+              </span>
+            </div>
           </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-slate-900">Ali Khan</span>
-            <span className="text-xs text-slate-500">Owner</span>
+
+          {/* Role & Logout Row */}
+          <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+            <div className="flex items-center gap-1 bg-slate-100 text-slate-600 px-2 py-1 rounded-md">
+              <ShieldCheck className="w-3 h-3" />
+              <span className="text-[10px] font-bold tracking-wider">OWNER</span>
+            </div>
+            
+            <button className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors" title="Log out">
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
+
         </div>
       </div>
+
     </aside>
   );
 }
