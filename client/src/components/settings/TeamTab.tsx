@@ -1,8 +1,17 @@
+"use client";
+
+import { useState } from "react";
 import { UserPlus, Shield, Edit2, Trash2 } from "lucide-react";
+import InviteStaffModal from "@/components/modals/InviteStaffModal"; // IMPORT THE MODAL
 
 export default function TeamTab({ team }: { team: any[] }) {
+  // 🟢 STATE TO CONTROL THE MODAL
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-6">
+      
+      {/* Header */}
       <div>
         <h2 className="text-base font-semibold text-slate-900">Team Management</h2>
         <p className="text-sm text-slate-500">Invite staff and manage their permissions.</p>
@@ -11,7 +20,12 @@ export default function TeamTab({ team }: { team: any[] }) {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <h3 className="text-sm font-medium text-slate-900">Active Members</h3>
-          <button className="flex items-center justify-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors shadow-sm">
+          
+          {/* 🟢 THE BUTTON THAT OPENS THE MODAL */}
+          <button 
+            onClick={() => setIsInviteModalOpen(true)}
+            className="flex items-center justify-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors shadow-sm"
+          >
             <UserPlus className="w-4 h-4" /> Invite Staff
           </button>
         </div>
@@ -70,6 +84,13 @@ export default function TeamTab({ team }: { team: any[] }) {
           </div>
         </div>
       </div>
+
+      {/* 🟢 RENDER THE MODAL AT THE BOTTOM */}
+      <InviteStaffModal 
+        isOpen={isInviteModalOpen} 
+        onClose={() => setIsInviteModalOpen(false)} 
+      />
+
     </div>
   );
 }
