@@ -43,26 +43,48 @@ model User {
 }
 
 model Customer {
-  id         String   @id @default(uuid())
-  name       String
-  phone      String
-  address    String?
-  businessId String
-  business   Business @relation(fields: [businessId], references: [id])
-  orders     Order[]
-  createdAt  DateTime @default(now())
+  id               String   @id @default(uuid())
+  name             String
+  phone            String
+  
+  // Optional Fields (Added later)
+  email            String?
+  address          String?
+  cnicNumber       String?  // Captures the scanned 13-digit ID
+  
+  // Anti-Fraud System
+  creditLimit      Float    @default(0) // 0 means no udhaar allowed
+  isDefaulter      Boolean  @default(false)
+  guarantorPhone   String?
+  
+  businessId       String
+  business         Business @relation(fields: [businessId], references: [id])
+  orders           Order[]
+  createdAt        DateTime @default(now())
 }
 
 model Product {
+  id          String   @id @default(uuid())
+  name        String
+  sku         String?  // Optional barcode/SKU
+  price       Float    // Selling price
+  costPrice   Float?   // Optional: How much the shop bought it for (for profit calculation)
+  stock       Int      @default(0)
+  
+  categoryId  String?  // 🟢 Connects to a Category Model
+  category    Category? @relation(fields: [categoryId], references: [id])
+
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id])
+}
+
+model Category {
   id         String   @id @default(uuid())
   name       String
-  price      Float
-  stock      Int
   businessId String
-  business   Business @relation(fields: [businessId], references: [id])
-  orderItems OrderItem[]
-  createdAt  DateTime @default(now())
+  products   Product[]
 }
+
 
 model Order {
   id          String   @id @default(uuid())
@@ -112,6 +134,7 @@ enum OrderStatus {
 
 enum Role {
   OWNER
+  MANAGER
   STAFF
 }
 
