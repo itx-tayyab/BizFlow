@@ -20,11 +20,14 @@ model Business {
   phone     String?
   address   String?
   ownerId   String
+  
   owner     User     @relation("BusinessOwner", fields: [ownerId], references: [id])
   users     User[]   @relation("BusinessUsers")
   customers Customer[]
   products  Product[]
   orders    Order[]
+  invitations Invitation[] // 🟢 Track pending staff invites
+  
   createdAt DateTime @default(now())
 }
 
@@ -33,13 +36,29 @@ model User {
   name             String
   email            String    @unique
   password         String
-  role             Role
-  businessId       String
-  business         Business  @relation("BusinessUsers", fields: [businessId], references: [id])
+  role             Role      @default(OWNER)
+  
+  // Made optional (?) so a user can be created before the business is created during onboarding
+  businessId       String?   
+  business         Business? @relation("BusinessUsers", fields: [businessId], references: [id])
+  
   ownedBusinesses  Business[] @relation("BusinessOwner")
-  createdOrders    Order[]   @relation("OrderCreator")
-  receivedPayments Payment[] @relation("PaymentReceiver")
-  createdAt        DateTime  @default(now())
+  createdOrders    Order[]    @relation("OrderCreator")
+  receivedPayments Payment[]  @relation("PaymentReceiver")
+  
+  createdAt        DateTime   @default(now())
+}
+
+model Invitation {
+  id         String   @id @default(uuid())
+  email      String
+  role       Role
+  token      String   @unique
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([email, businessId]) // Prevent inviting the same person twice to the same shop
 }
 
 model Customer {
@@ -47,7 +66,6 @@ model Customer {
   name             String
   phone            String
   
-  // Optional Fields (Added later)
   email            String?
   address          String?
   cnicNumber       String?  // Captures the scanned 13-digit ID
@@ -58,7 +76,7 @@ model Customer {
   guarantorPhone   String?
   
   businessId       String
-  business         Business @relation(fields: [businessId], references: [id])
+  business         Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   orders           Order[]
   createdAt        DateTime @default(now())
 }
@@ -66,16 +84,18 @@ model Customer {
 model Product {
   id          String   @id @default(uuid())
   name        String
-  sku         String?  // Optional barcode/SKU
-  price       Float    // Selling price
-  costPrice   Float?   // Optional: How much the shop bought it for (for profit calculation)
+  sku         String?  
+  price       Float    
+  costPrice   Float?   
   stock       Int      @default(0)
   
-  categoryId  String?  // 🟢 Connects to a Category Model
+  categoryId  String?  
   category    Category? @relation(fields: [categoryId], references: [id])
 
   businessId  String
-  business    Business @relation(fields: [businessId], references: [id])
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  
+  orderItems  OrderItem[] // 🟢 FIXED: Added opposite relation for OrderItem
 }
 
 model Category {
@@ -85,22 +105,21 @@ model Category {
   products   Product[]
 }
 
-
 model Order {
-  id          String   @id @default(uuid())
-  customerId  String
-  businessId  String
-  status      OrderStatus
-  totalAmount Float
-  createdBy   String?   // userId (owner/staff)
-
-  creator   User? @relation("OrderCreator", fields: [createdBy], references: [id])
-  customer Customer @relation(fields: [customerId], references: [id])
-  business Business @relation(fields: [businessId], references: [id])
-  items    OrderItem[]
-  payments Payment[]
+  id            String   @id @default(uuid())
+  customerId    String
+  businessId    String
+  status        OrderStatus
   paymentStatus PaymentStatus @default(UNPAID)
-  createdAt DateTime @default(now())
+  totalAmount   Float
+  createdBy     String?   
+
+  creator   User?       @relation("OrderCreator", fields: [createdBy], references: [id])
+  customer  Customer    @relation(fields: [customerId], references: [id])
+  business  Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  items     OrderItem[]
+  payments  Payment[]
+  createdAt DateTime    @default(now())
 }
 
 model OrderItem {
@@ -119,11 +138,11 @@ model Payment {
   orderId   String
   amount    Float
   method    PaymentMethod
-  receivedBy String  // userId
-  receiver   User @relation("PaymentReceiver", fields: [receivedBy], references: [id])
-  createdAt DateTime @default(now())
-
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  receivedBy String  
+  
+  receiver   User  @relation("PaymentReceiver", fields: [receivedBy], references: [id])
+  order      Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
 }
 
 enum OrderStatus {
