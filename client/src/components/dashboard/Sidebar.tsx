@@ -10,7 +10,8 @@ import {
   Package, 
   Settings,
   LogOut,
-  ShieldCheck
+  ShieldCheck,
+  BarChart3
 } from "lucide-react";
 
 const navItems =[
@@ -19,6 +20,7 @@ const navItems =[
   { name: "Products", href: "/products", icon: Package },
   { name: "Customers", href: "/customers", icon: Users },
   { name: "Settings", href: "/settings", icon: Settings },
+  { name: "Reports", href: "/reports", icon: BarChart3 },
 ];
 
 export default function Sidebar() {
