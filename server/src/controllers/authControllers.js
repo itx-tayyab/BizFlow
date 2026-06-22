@@ -1,22 +1,36 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import {ExistingUser, CreateNewUser} from '../models/authModal.js';
-import {app} from '../app.js';
+import dotenv from 'dotenv'; 
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 export const registeruser = async(req,res) => {
     const {name, email, password} = req.body;
 
     try {
-        const existinguser = await ExistingUser(email);
+        const existinguser = await prisma.user.findUnique({
+            where: {
+                email: email,
+            }
+        });
         if(existinguser){
             return res.status(400).json({message: "Email Already Exist"})
         }
 
         const hashPassword = await bcrypt.hash(password,10);
 
-        const NewUser = await CreateNewUser(name, email, hashPassword);
+        const NewUser = await prisma.user.create({
+            data: {
+                name: name,
+                email: email,
+                password: hashPassword,
+            }
+        })
 
-        res.status(201).json({user: NewUser,token});
+        res.status(201).json({
+            user: NewUser
+        });
 
     } catch (err) {
         console.error(err);
@@ -28,7 +42,11 @@ export const loginuser = async(req,res) => {
     const {email,password} = req.body;
 
     try {
-        const existinguser = await ExistingUser(email);
+        const existinguser = await prisma.user.findUnique({
+            where: {
+                email: email,
+            }
+        });
         if(!existinguser){
             return res.status(400).json({message: "Email Not Found"})
         }
@@ -42,11 +60,10 @@ export const loginuser = async(req,res) => {
         (
             {
              id: existinguser.id,
-             email: existinguser.email,
             },
             process.env.ACCESS_TOKEN_SECRET,
             {
-                expiresIn: process.env.ACCESS_TOKEN_SECRET_EXPIRE
+                expiresIn: process.env.ACCESS_TOKEN_EXPIRATION
             }
         )
 
@@ -54,16 +71,15 @@ export const loginuser = async(req,res) => {
         (
             {
              id: existinguser.id,
-             email: existinguser.email,
             },
             process.env.REFRESH_TOKEN_SECRET,
             {
-                expiresIn: process.env.REFRESH_TOKEN_SECRET_EXPIRE
+                expiresIn: process.env.REFRESH_TOKEN_EXPIRATION
             }
         )
 
         res.cookie(
-        "jwt", refreshToken, 
+        "jwt", refreshtoken, 
         {
         httpOnly: true,   
         secure: true,     
@@ -72,16 +88,16 @@ export const loginuser = async(req,res) => {
 
        res.json({
        message: "Login successful",
-       accesstoken,
-       user: 
-        { 
-          id: existinguser.id,
-          name: existinguser.name, 
-          email: existinguser.email 
-        },
+       accessToken: accesstoken,
+       user: existinguser,
     });
         
     } catch (err) {
         res.status(500).json({message: "Server error"});
     }
+}
+
+export const logoutuser = async(req,res) => {
+    res.clearCookie("jwt");
+    res.json({message: "Logout successful"});
 }
