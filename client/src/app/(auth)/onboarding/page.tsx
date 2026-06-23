@@ -17,6 +17,8 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const[isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   // Form State
   const[formData, setFormData] = useState({
@@ -34,13 +36,46 @@ export default function OnboardingPage() {
   };
 
   const handleComplete = async () => {
+    setError("");
+    setSuccess("");
     setIsSubmitting(true);
-    // In reality, this is where you call your Server Action:
-    // await createBusiness(formData);
-    
-    setTimeout(() => {
-      router.push("/dashboard"); // Redirect to the main app
-    }, 1500);
+
+    try {
+      const rawUser = localStorage.getItem("user");
+      if (!rawUser) throw new Error("You must be signed in to complete onboarding");
+      const user = JSON.parse(rawUser);
+      const ownerId = user.id || user.ID || user.userId || user?.id;
+      if (!ownerId) throw new Error("Unable to determine owner id");
+
+      const payload = {
+        name: formData.businessName,
+        industry: formData.industry,
+        teamSize: formData.teamSize,
+        currency: formData.currency,
+        phone: formData.phone,
+        address: formData.address,
+        slug: formData.slug,
+        ownerId,
+      };
+
+      const res = await fetch("http://localhost:5000/onboard/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || "Onboarding failed");
+
+      setSuccess(data?.message || "Onboarding successful");
+      setIsSubmitting(false);
+      // short delay so user sees the success message briefly
+      setTimeout(() => router.push("/dashboard"), 800);
+    } catch (err: any) {
+      console.error("Onboarding error:", err);
+      setError(err.message || "Something went wrong");
+      setIsSubmitting(false);
+    }
   };
 
   return (
