@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Mail, User, Shield, Send } from "lucide-react";
+import { X, Mail, Shield, Send } from "lucide-react";
 
 interface InviteStaffModalProps {
   isOpen: boolean;
@@ -50,19 +50,6 @@ export default function InviteStaffModal({ isOpen, onClose }: InviteStaffModalPr
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-5 space-y-5">
-          
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Full Name</label>
-            <div className="relative">
-              <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-              <input 
-                type="text" 
-                required
-                placeholder="e.g. Ali Raza" 
-                className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
-              />
-            </div>
-          </div>
 
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1.5">Email Address</label>
