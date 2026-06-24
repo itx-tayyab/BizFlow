@@ -67,6 +67,23 @@ export default function OnboardingPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || "Onboarding failed");
 
+      const storedUser = localStorage.getItem("user");
+      if (storedUser && data?.business?.id) {
+        try {
+          const currentUser = JSON.parse(storedUser);
+          localStorage.setItem(
+            "user",
+            JSON.stringify({
+              ...currentUser,
+              businessId: data.business.id,
+              role: "OWNER",
+            })
+          );
+        } catch {
+          // Ignore local persistence issues; server state is already updated.
+        }
+      }
+
       setSuccess(data?.message || "Onboarding successful");
       setIsSubmitting(false);
       // short delay so user sees the success message briefly

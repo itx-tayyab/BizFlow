@@ -28,6 +28,7 @@ export default function LoginPage() {
 
       if (!res.ok) throw new Error(data?.message || "Login failed");
 
+      // 1. Save credentials
       if (data?.accessToken) {
         localStorage.setItem("accessToken", data.accessToken);
       }
@@ -35,12 +36,22 @@ export default function LoginPage() {
         localStorage.setItem("user", JSON.stringify(data.user));
       }
 
-      router.push("/dashboard");
+      // 2. 🟢 SMART ROUTING LOGIC
+      // Check if the user has a business attached to their account
+      if (data?.user?.businessId) {
+        // Business exists -> Go to main app
+        router.push("/dashboard");
+      } else {
+        // No business -> Force them to complete onboarding
+        router.push("/onboarding");
+      }
+
     } catch (err: any) {
       setError(err.message || "Something went wrong");
       setLoading(false);
     }
   }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
@@ -134,16 +145,20 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                <p className="text-sm text-rose-600 font-medium text-center">{error}</p>
+              </div>
+            )}
 
             <div>
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all"
+                className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all disabled:opacity-70"
               >
                 {loading ? "Signing in..." : "Sign In"}
-                <ArrowRight className="w-4 h-4" />
+                {!loading && <ArrowRight className="w-4 h-4" />}
               </button>
             </div>
           </form>
