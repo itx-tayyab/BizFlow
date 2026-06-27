@@ -3,12 +3,15 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Store, Mail, Lock, User, ArrowRight } from "lucide-react";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const invitedEmail = searchParams.get("email") || "";
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(invitedEmail);
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -31,9 +34,20 @@ export default function RegisterPage() {
 
       if (!res.ok) throw new Error(data?.message || "Registration failed");
 
+      if (data?.accessToken) {
+        localStorage.setItem("accessToken", data.accessToken);
+      }
+      if (data?.user) {
+        localStorage.setItem("user", JSON.stringify(data.user));
+      }
+
       setSuccess(data?.message || "Account created successfully");
-      setLoading(false);
-      router.push("/login");
+
+      if (data?.hasBusiness) {
+        router.push("/dashboard");
+      } else {
+        router.push("/onboarding");
+      }
     } catch (err: any) {
       setError(err.message || "Something went wrong");
       setLoading(false);
@@ -103,9 +117,11 @@ export default function RegisterPage() {
                   autoComplete="email"
                   required
                   value={email}
+                  readOnly={Boolean(invitedEmail)}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full pl-10 sm:text-sm border-slate-300 rounded-xl py-3 text-slate-900 focus:ring-blue-500 focus:border-blue-500 border outline-none transition-colors"
+                  className="block w-full pl-10 sm:text-sm border-slate-300 rounded-xl py-3 text-slate-900 focus:ring-blue-500 focus:border-blue-500 border outline-none transition-colors disabled:bg-slate-100 disabled:text-slate-500"
                   placeholder="you@example.com"
+                  disabled={Boolean(invitedEmail)}
                 />
               </div>
             </div>
