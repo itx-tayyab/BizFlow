@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { 
   Store, 
   LayoutDashboard, 
@@ -25,6 +27,46 @@ const navItems =[
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [user, setUser] = useState<{ name?: string; email?: string; role?: string } | null>(null);
+
+  useEffect(() => {
+    const rawUser = localStorage.getItem("user");
+    if (!rawUser) return;
+
+    try {
+      setUser(JSON.parse(rawUser));
+    } catch {
+      setUser(null);
+    }
+  }, []);
+
+  const initials = useMemo(() => {
+    const name = user?.name || "Ali Khan";
+    return name
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("");
+  }, [user]);
+
+  const handleLogout = async () => {
+    const token = localStorage.getItem("accessToken");
+
+    try {
+      await fetch("http://localhost:5000/auth/logout", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+    } catch {
+      // Clear local state even if the network request fails.
+    } finally {
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("user");
+      router.push("/login");
+    }
+  };
 
   return (
     <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 min-h-screen fixed left-0 top-0 z-20">
@@ -69,14 +111,14 @@ export default function Sidebar() {
           {/* User Info */}
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm shrink-0 border border-blue-200">
-              AK
+              {initials || "AK"}
             </div>
             <div className="flex flex-col overflow-hidden">
               <span className="text-sm font-bold text-slate-900 truncate">
-                Ali Khan
+                {user?.name || "Ali Khan"}
               </span>
               <span className="text-[11px] font-medium text-slate-500 truncate">
-                ali@alfatah.pk
+                {user?.email || "ali@alfatah.pk"}
               </span>
             </div>
           </div>
@@ -85,10 +127,10 @@ export default function Sidebar() {
           <div className="flex items-center justify-between pt-3 border-t border-slate-100">
             <div className="flex items-center gap-1 bg-slate-100 text-slate-600 px-2 py-1 rounded-md">
               <ShieldCheck className="w-3 h-3" />
-              <span className="text-[10px] font-bold tracking-wider">OWNER</span>
+              <span className="text-[10px] font-bold tracking-wider">{(user?.role || "OWNER").toUpperCase()}</span>
             </div>
             
-            <button className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors" title="Log out">
+            <button onClick={handleLogout} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors" title="Log out">
               <LogOut className="w-4 h-4" />
             </button>
           </div>
