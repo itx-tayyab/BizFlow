@@ -7,7 +7,7 @@ interface FloatingSaveBarProps {
 
 export default function FloatingSaveBar({ isSaving, handleSave }: FloatingSaveBarProps) {
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-auto md:right-8 bg-white border border-slate-200 p-3 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-4 z-40 animate-in slide-in-from-bottom-10">
+    <div className="fixed bottom-6 right-4 md:right-8 bg-white border border-slate-200 p-3 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-4 z-40 animate-in slide-in-from-bottom-10">
       <span className="text-sm font-medium text-slate-500 px-2 hidden sm:block">You have unsaved changes</span>
       <button 
         onClick={handleSave}
