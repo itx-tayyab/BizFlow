@@ -11,24 +11,25 @@ datasource db {
 }
 
 model Business {
-  id        String   @id @default(uuid())
-  name      String
-  slug      String   @unique // <-- Used for their public portal link
-  currency  String   @default("PKR") // <-- Localization
-  industry  String?
-  teamSize  String?
-  phone     String?
-  address   String?
-  ownerId   String
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique // <-- Used for their public portal link
+  currency    String   @default("PKR") // <-- Localization
+  industry    String?
+  teamSize    String?
+  phone       String?
+  address     String?
+  ownerId     String
   
-  owner     User     @relation("BusinessOwner", fields: [ownerId], references: [id])
-  users     User[]   @relation("BusinessUsers")
-  customers Customer[]
-  products  Product[]
-  orders    Order[]
-  invitations Invitation[] // 🟢 Track pending staff invites
+  owner       User     @relation("BusinessOwner", fields: [ownerId], references: [id])
+  users       User[]   @relation("BusinessUsers")
+  customers   Customer[]
+  products    Product[]
+  orders      Order[]
+  invitations Invitation[] // Track pending staff invites
+  categories  Category[]   // 🟢 NEW: Business owns its categories
   
-  createdAt DateTime @default(now())
+  createdAt   DateTime @default(now())
 }
 
 model User {
@@ -95,14 +96,18 @@ model Product {
   businessId  String
   business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   
-  orderItems  OrderItem[] // 🟢 FIXED: Added opposite relation for OrderItem
+  orderItems  OrderItem[] 
 }
 
 model Category {
   id         String   @id @default(uuid())
   name       String
   businessId String
+  
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   products   Product[]
+
+  @@unique([name, businessId]) // This prevents a shop from making two "Smartphones" categories!
 }
 
 model Order {
