@@ -29,7 +29,6 @@ export const BusinessOnboarding = async (req, res) => {
 
         const result = await prisma.$transaction(async (tx) => {
             
-            // A. Create the Business
             const newBusiness = await tx.business.create({
                 data: {
                     name: name,
