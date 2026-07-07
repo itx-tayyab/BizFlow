@@ -1,58 +1,191 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation"; 
 import { 
   Search, Package, AlertCircle, CheckCircle2, 
-  Filter, Plus, Minus, Trash2, ArrowRight, FolderTree, Tag, Barcode
+  Filter, Plus, Trash2, FolderTree, Tag, Barcode
 } from "lucide-react";
+import AddProductModal from "@/components/modals/AddProductModal"; // 🟢 IMPORT MODAL
 
-// --- MOCK INVENTORY DATA (Now with Categories & SKUs) ---
-const mockCategories = ["Smartphones", "Accessories", "Laptops", "Audio"];
+type StockFilter = "all" | "low" | "out";
 
-const initialProducts =[
-  { id: "1", name: "Samsung Galaxy S23", sku: "SM-S23-01", category: "Smartphones", price: 210000, stock: 12 },
-  { id: "2", name: "AirPods Pro (2nd Gen)", sku: "AP-PRO-02", category: "Audio", price: 65000, stock: 3 },
-  { id: "3", name: "Dell XPS 13 Laptop", sku: "DL-XPS-13", category: "Laptops", price: 350000, stock: 0 },
-  { id: "4", name: "Logitech MX Master 3", sku: "LOG-MX-03", category: "Accessories", price: 25000, stock: 24 },
-  { id: "5", name: "Sony WH-1000XM5", sku: "SNY-WH-05", category: "Audio", price: 95000, stock: 4 },
-  { id: "6", name: "iPhone 15 Pro Max Clear Case", sku: "IP15-CC-01", category: "Accessories", price: 2500, stock: 45 },
-];
+type ProductRecord = {
+  id: string;
+  name: string;
+  sku: string;
+  price: number;
+  stock: number;
+  category?: {
+    name?: string;
+  } | null;
+};
+
+type ProductRow = {
+  id: string;
+  name: string;
+  sku: string;
+  category: string;
+  price: number;
+  stock: number;
+};
+
+type ProductFormValues = {
+  name: string;
+  sku: string;
+  category: string;
+  price: number;
+  stock: number;
+};
+
+const API_BASE_URL = "http://localhost:5000";
+
+const getAuthHeaders = () => {
+  if (typeof window === "undefined") {
+    return { "Content-Type": "application/json" };
+  }
+
+  const accessToken = localStorage.getItem("accessToken");
+  return {
+    "Content-Type": "application/json",
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  };
+};
+
+const normalizeProduct = (product: ProductRecord): ProductRow => ({
+  id: product.id,
+  name: product.name,
+  sku: product.sku,
+  category: product.category?.name ?? "Uncategorized",
+  price: Number(product.price ?? 0),
+  stock: Number(product.stock ?? 0),
+});
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState(initialProducts);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState("All");
+
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "");
+  const [activeCategory, setActiveCategory] = useState(searchParams.get("category") || "All");
+  const [stockFilter, setStockFilter] = useState<StockFilter>((searchParams.get("stock") as StockFilter) || "all");
+  const [products, setProducts] = useState<ProductRow[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [pageError, setPageError] = useState("");
   
-  // Quick Add State
-  const [newName, setNewName] = useState("");
-  const [newCategory, setNewCategory] = useState("");
-  const [newPrice, setNewPrice] = useState("");
-  const [newStock, setNewStock] = useState("");
+  // 🟢 MODAL STATES
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
 
-  // --- ACTIONS ---
-  const handleAddProduct = () => {
-    if (!newName || !newPrice || !newCategory) return;
-    const newProduct = {
-      id: Math.random().toString(),
-      name: newName,
-      sku: `SKU-${Math.floor(Math.random() * 10000)}`, // Auto-generate SKU
-      category: newCategory,
-      price: Number(newPrice),
-      stock: Number(newStock) || 0,
-    };
-    setProducts([newProduct, ...products]);
-    setNewName(""); setNewPrice(""); setNewStock(""); setNewCategory("");
-  };
+  const [newCategoryName, setNewCategoryName] = useState("");
 
-  const updateStock = (id: string, delta: number) => {
-    setProducts(products.map(p => {
-      if (p.id === id) {
-        const updatedStock = p.stock + delta;
-        return { ...p, stock: updatedStock < 0 ? 0 : updatedStock };
+  const refreshProducts = useCallback(async () => {
+    setIsLoadingProducts(true);
+    setPageError("");
+
+    try {
+      const params = new URLSearchParams();
+
+      if (searchQuery) params.set("search", searchQuery);
+      if (activeCategory !== "All") params.set("category", activeCategory);
+      if (stockFilter !== "all") params.set("stock", stockFilter);
+
+      const response = await fetch(`${API_BASE_URL}/product/getproducts?${params.toString()}`, {
+        headers: getAuthHeaders(),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || "Failed to load products");
       }
-      return p;
-    }));
+
+      const normalizedProducts = ((data?.products || []) as ProductRecord[]).map(normalizeProduct);
+      setProducts(normalizedProducts);
+
+      const productCategories = normalizedProducts
+        .map((product) => product.category)
+        .filter((category): category is string => Boolean(category));
+
+      setCategories((currentCategories) => Array.from(new Set([...currentCategories, ...productCategories])).sort());
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Failed to load products");
+      setProducts([]);
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  }, [searchQuery, activeCategory, stockFilter]);
+
+  const handleAddProduct = async (newProduct: ProductFormValues) => {
+    const response = await fetch(`${API_BASE_URL}/product/addproduct`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(newProduct),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || "Failed to add product");
+    }
+
+    setIsAddModalOpen(false);
+    await refreshProducts();
   };
+
+  const handleAddCategory = async () => {
+    const trimmedName = newCategoryName.trim();
+
+    if (!trimmedName) return;
+
+    const response = await fetch(`${API_BASE_URL}/product/addcategory`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ name: trimmedName }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || "Failed to add category");
+    }
+
+    setCategories((currentCategories) => Array.from(new Set([...currentCategories, trimmedName])).sort());
+    setIsCategoryModalOpen(false);
+    setNewCategoryName("");
+  };
+
+   useEffect(() => {
+    // Create a new URL parameter object
+    const params = new URLSearchParams(searchParams.toString());
+
+    // Update or delete Search
+    if (searchQuery) params.set("search", searchQuery);
+    else params.delete("search");
+
+    // Update or delete Category
+    if (activeCategory !== "All") params.set("category", activeCategory);
+    else params.delete("category");
+
+    // Update or delete Stock Filter
+    if (stockFilter !== "all") params.set("stock", stockFilter);
+    else params.delete("stock");
+
+    // Push the new URL to the browser WITHOUT reloading the page
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    
+  }, [searchQuery, activeCategory, stockFilter, pathname, router, searchParams]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void refreshProducts();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [refreshProducts]);
 
   const deleteProduct = (id: string) => {
     setProducts(products.filter(p => p.id !== id));
@@ -61,8 +194,10 @@ export default function ProductsPage() {
   // --- MATH & FILTERS ---
   const filteredProducts = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = activeCategory === "All" || p.category === activeCategory;
-    return matchesSearch && matchesCategory;
+    const matchesCat = activeCategory === "All" || p.category === activeCategory;
+    const matchesStock = stockFilter === "all" ? true : stockFilter === "low" ? (p.stock > 0 && p.stock <= 5) : p.stock === 0;
+    
+    return matchesSearch && matchesCat && matchesStock;
   });
 
   const totalInventoryValue = filteredProducts.reduce((sum, p) => sum + (p.price * p.stock), 0);
@@ -72,8 +207,8 @@ export default function ProductsPage() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-10 mt-2">
       
-      {/* 🟢 1. PAGE HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* 🟢 1. PAGE HEADER & ADD BUTTON */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <Package className="w-6 h-6 text-blue-600" />
@@ -81,10 +216,18 @@ export default function ProductsPage() {
           </h1>
           <p className="text-sm text-slate-500 mt-1">Manage catalog, categories, and track inventory value.</p>
         </div>
+        
+        <button 
+          onClick={() => setIsAddModalOpen(true)}
+          className="flex items-center justify-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm shadow-blue-200"
+        >
+          <Plus className="w-4 h-4" /> Add Product
+        </button>
       </div>
 
       {/* 🟢 2. DYNAMIC METRICS CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* ... (Metrics code stays exactly the same) ... */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-slate-500">Products in View</p>
@@ -108,9 +251,8 @@ export default function ProductsPage() {
 
       {/* 🟢 3. CATEGORY TABS & SEARCH BAR */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-4">
-        
         {/* Category Filter Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar pb-2 sm:pb-0">
+        <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar pb-2 sm:pb-0 border-b border-slate-100">
           <FolderTree className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
           <button 
             onClick={() => setActiveCategory("All")}
@@ -118,7 +260,7 @@ export default function ProductsPage() {
           >
             All Categories
           </button>
-          {mockCategories.map(category => (
+          {categories.map((category) => (
             <button 
               key={category}
               onClick={() => setActiveCategory(category)}
@@ -127,13 +269,16 @@ export default function ProductsPage() {
               {category}
             </button>
           ))}
-          <button className="px-3 py-1.5 rounded-lg text-sm font-medium text-blue-600 hover:bg-blue-50 border border-dashed border-blue-200 whitespace-nowrap transition-colors flex items-center gap-1 ml-auto">
+          <button 
+            onClick={() => setIsCategoryModalOpen(true)}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-blue-600 hover:bg-blue-50 border border-dashed border-blue-200 whitespace-nowrap transition-colors flex items-center gap-1 ml-auto"
+          >
             <Plus className="w-3.5 h-3.5" /> New Category
           </button>
         </div>
 
         {/* Search */}
-        <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-slate-100">
+        <div className="flex flex-col sm:flex-row gap-4 pt-2 relative">
           <div className="relative flex-1">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Search className="h-4 w-4 text-slate-400" />
@@ -146,14 +291,35 @@ export default function ProductsPage() {
               className="block w-full pl-10 pr-3 py-2 border border-slate-200 rounded-xl leading-5 bg-slate-50 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 sm:text-sm transition-all"
             />
           </div>
-          <button className="flex items-center justify-center gap-2 px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors w-full sm:w-auto">
-            <Filter className="w-4 h-4" /> More Filters
+          
+          <button 
+            onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+            className={`flex items-center justify-center gap-2 px-4 py-2 border rounded-xl text-sm font-medium transition-colors w-full sm:w-auto ${isFilterMenuOpen || stockFilter !== 'all' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'border-slate-200 text-slate-700 bg-white hover:bg-slate-50'}`}
+          >
+            <Filter className="w-4 h-4" /> {stockFilter === 'all' ? 'More Filters' : 'Filters Active'}
           </button>
+
+          {/* Filter Dropdown */}
+          {isFilterMenuOpen && (
+            <div className="absolute right-0 top-14 w-56 bg-white rounded-xl shadow-lg border border-slate-200 p-3 z-20 animate-in fade-in slide-in-from-top-2">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Stock Level</p>
+              <div className="space-y-1">
+                <button onClick={() => {setStockFilter("all"); setIsFilterMenuOpen(false)}} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${stockFilter === "all" ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50"}`}>All Products</button>
+                <button onClick={() => {setStockFilter("low"); setIsFilterMenuOpen(false)}} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${stockFilter === "low" ? "bg-yellow-50 text-yellow-700" : "text-slate-600 hover:bg-slate-50"}`}>Low Stock (1-5)</button>
+                <button onClick={() => {setStockFilter("out"); setIsFilterMenuOpen(false)}} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${stockFilter === "out" ? "bg-rose-50 text-rose-700" : "text-slate-600 hover:bg-slate-50"}`}>Out of Stock (0)</button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 🟢 4. INLINE SPREADSHEET TABLE */}
+      {/* 🟢 4. INVENTORY TABLE */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex-1">
+        {pageError && (
+          <div className="border-b border-rose-100 bg-rose-50 px-6 py-3 text-sm text-rose-700">
+            {pageError}
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
@@ -166,62 +332,20 @@ export default function ProductsPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               
-              {/* --- ⚡ SMART QUICK-ADD ROW (Now with Categories) --- */}
-              <tr className="bg-blue-50/30">
-                <td className="px-6 py-3">
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      value={newName} 
-                      onChange={(e) => setNewName(e.target.value)} 
-                      placeholder="+ Add new product name..." 
-                      className="flex-1 bg-white border border-blue-200 rounded-lg py-1.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-blue-300 font-medium"
-                    />
-                    {/* Category Dropdown */}
-                    <select 
-                      value={newCategory}
-                      onChange={(e) => setNewCategory(e.target.value)}
-                      className={`w-32 bg-white border border-blue-200 rounded-lg py-1.5 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer ${!newCategory ? 'text-blue-300' : 'text-slate-900'}`}
-                    >
-                      <option value="" disabled>Category</option>
-                      {mockCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                </td>
-                <td className="px-6 py-3">
-                  <input 
-                    type="number" 
-                    value={newPrice} 
-                    onChange={(e) => setNewPrice(e.target.value)} 
-                    placeholder="Price" 
-                    className="w-full bg-white border border-blue-200 rounded-lg py-1.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </td>
-                <td className="px-6 py-3">
-                  <input 
-                    type="number" 
-                    value={newStock} 
-                    onChange={(e) => setNewStock(e.target.value)} 
-                    placeholder="Stock Qty" 
-                    className="w-full bg-white border border-blue-200 rounded-lg py-1.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </td>
-                <td className="px-6 py-3 text-right">
-                  <button 
-                    onClick={handleAddProduct}
-                    disabled={!newName || !newPrice || !newCategory}
-                    className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-1 ml-auto shadow-sm"
-                  >
-                    Save <ArrowRight className="w-3 h-3" />
-                  </button>
-                </td>
-              </tr>
-
-              {/* --- ACTUAL DATA ROWS --- */}
-              {filteredProducts.map((product) => (
+              {isLoadingProducts ? (
+                <tr>
+                  <td className="px-6 py-8 text-slate-500" colSpan={4}>
+                    Loading products from the server...
+                  </td>
+                </tr>
+              ) : filteredProducts.length === 0 ? (
+                <tr>
+                  <td className="px-6 py-8 text-slate-500" colSpan={4}>
+                    No products match the current filters.
+                  </td>
+                </tr>
+              ) : filteredProducts.map((product) => (
                 <tr key={product.id} className="hover:bg-slate-50 transition-colors group">
-                  
-                  {/* Product Details (Name, SKU, Category) */}
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
                       <span className="font-semibold text-slate-900">{product.name}</span>
@@ -242,7 +366,6 @@ export default function ProductsPage() {
                   
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      {/* Stock Badge */}
                       <div className="w-28">
                         {product.stock > 5 ? (
                           <span className="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -258,12 +381,6 @@ export default function ProductsPage() {
                           </span>
                         )}
                       </div>
-                      
-                      {/* Inline Stock Adjustment Buttons */}
-                      <div className="hidden group-hover:flex items-center bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-                        <button onClick={() => updateStock(product.id, -1)} className="px-2.5 py-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"><Minus className="w-3 h-3" /></button>
-                        <button onClick={() => updateStock(product.id, 1)} className="px-2.5 py-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 border-l border-slate-200 transition-colors"><Plus className="w-3 h-3" /></button>
-                      </div>
                     </div>
                   </td>
 
@@ -271,29 +388,59 @@ export default function ProductsPage() {
                     <button 
                       onClick={() => deleteProduct(product.id)}
                       className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                      title="Delete Product"
                     >
                       <Trash2 className="w-4.5 h-4.5" />
                     </button>
                   </td>
                 </tr>
               ))}
-
-              {filteredProducts.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
-                    <Package className="w-8 h-8 mx-auto mb-3 text-slate-300" />
-                    <p className="font-medium text-slate-900">No products found</p>
-                    <p className="text-sm mt-1">Try adjusting your search or category filter.</p>
-                  </td>
-                </tr>
-              )}
-
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* ==========================================
+          🟢 RENDER MODALS HERE
+      ========================================== */}
       
+      {/* 1. Add Product Modal Component */}
+      <AddProductModal 
+        isOpen={isAddModalOpen} 
+        onClose={() => setIsAddModalOpen(false)} 
+        onAdd={handleAddProduct}
+        categories={categories}
+      />
+
+      {/* 2. Add Category Modal (Inline for now) */}
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsCategoryModalOpen(false)} />
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm p-6 animate-in zoom-in-95">
+            <h3 className="text-lg font-bold text-slate-900 mb-1">Add New Category</h3>
+            <p className="text-sm text-slate-500 mb-4">Create a new category to organize your products.</p>
+            
+            <input 
+              type="text" autoFocus
+              value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)}
+              placeholder="e.g. Cables & Adapters" 
+              className="w-full border border-slate-300 rounded-lg py-2.5 px-3 mb-5 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+            />
+            
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setIsCategoryModalOpen(false)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button 
+                onClick={() => {
+                  void handleAddCategory();
+                }}
+                className="px-4 py-2 text-sm font-bold bg-blue-600 text-white hover:bg-blue-700 rounded-lg"
+              >
+                Save Category
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
