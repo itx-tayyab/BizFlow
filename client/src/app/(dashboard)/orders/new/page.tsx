@@ -1,41 +1,208 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { 
-  ArrowLeft, Search, User, UserPlus, Plus, 
-  Minus, Trash2, Tag, CheckCircle2, Wallet, 
-  Receipt
+import { useRouter, useSearchParams } from "next/navigation"; // 🟢 ADDED useSearchParams
+import {
+  ArrowLeft, Search, Plus, Minus, Trash2,
+  Tag, CheckCircle2, Wallet, Receipt, Barcode,
+  PackageOpen, ChevronDown, AlertCircle
 } from "lucide-react";
 
-// --- MOCK INVENTORY ---
-const mockProducts =[
-  { id: "P1", name: "Samsung Galaxy S23", price: 210000 },
-  { id: "P2", name: "AirPods Pro", price: 65000 },
-  { id: "P3", name: "USB-C Cable (Fast Charge)", price: 1500 },
-  { id: "P4", name: "Screen Protector", price: 800 },
-];
-
-type CartItem = {
+type Product = {
   id: string;
   name: string;
+  sku: string | null;
   price: number;
-  qty: number;
+  stock: number;
+  category?: { name: string };
 };
 
+type CartItem = Product & { qty: number };
+
 export default function CreateOrderPOS() {
-  // State
+  const router = useRouter();
+  const searchParams = useSearchParams(); // 🟢 TO READ ?customerId= FROM URL
+
+  // 1. API STATES
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [categories, setCategories] = useState<string[]>(["All"]);
+
+  // 2. POS STATES
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerMode, setCustomerMode] = useState<"walk-in" | "existing">("walk-in");
+  
+  // 🟢 3. NEW CUSTOMER SEARCH STATES
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerResults, setCustomerResults] = useState<any[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
+  const [isSearchingCustomer, setIsSearchingCustomer] = useState(false);
+
+  // 4. DISCOUNT & PAYMENT STATES
   const [discount, setDiscount] = useState<number>(0);
-  const [isPaidNow, setIsPaidNow] = useState<boolean>(true);
+  const [amountPaid, setAmountPaid] = useState<string>("");
+  const [paymentMethod, setPaymentMethod] = useState("CASH");
+  const [orderStatus, setOrderStatus] = useState("COMPLETED");
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState("All");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ==========================================
+  // 🟢 FETCH REAL CATEGORIES
+  // ==========================================
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const token = localStorage.getItem("accessToken");
+        const res = await fetch("http://localhost:5000/product/getcategories", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+          const names = data.categories.map((c: any) => c.name);
+          setCategories(["All", ...names]);
+        }
+      } catch (error) {
+        console.error("Failed to fetch categories", error);
+      }
+    };
+    fetchCategories();
+  }, []);
+
+  // ==========================================
+  // 🟢 FETCH REAL PRODUCTS 
+  // ==========================================
+  useEffect(() => {
+    const fetchProducts = async () => {
+      setIsLoadingProducts(true);
+      try {
+        const token = localStorage.getItem("accessToken");
+        const params = new URLSearchParams();
+        if (searchQuery) params.append("search", searchQuery);
+        if (activeCategory !== "All") params.append("category", activeCategory);
+
+        const res = await fetch(`http://localhost:5000/product/getproducts?${params.toString()}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          setProducts(data.products);
+        }
+      } catch (error) {
+        console.error("Failed to fetch products", error);
+      } finally {
+        setIsLoadingProducts(false);
+      }
+    };
+
+    const delayDebounceFn = setTimeout(() => fetchProducts(), 300);
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery, activeCategory]);
+
+  // ==========================================
+  // 🟢 FETCH CUSTOMERS FOR SEARCH DROPDOWN
+  // ==========================================
+  useEffect(() => {
+    if (customerSearch.length < 2) {
+      setCustomerResults([]);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(async () => {
+      setIsSearchingCustomer(true);
+      try {
+        const token = localStorage.getItem("accessToken");
+        const res = await fetch(`http://localhost:5000/customer/getallcustomers?search=${customerSearch}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+          setCustomerResults(data.customers);
+        }
+      } catch (error) {
+        console.error("Failed to search customers", error);
+      } finally {
+        setIsSearchingCustomer(false);
+      }
+    }, 300); // 300ms debounce to save backend load
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [customerSearch]);
+
+  // ==========================================
+  // 🟢 AUTO-LOAD CUSTOMER FROM URL (?customerId=123)
+  // ==========================================
+  useEffect(() => {
+    const urlCustomerId = searchParams.get("customerId");
+    if (urlCustomerId) {
+      setCustomerMode("existing");
+      const token = localStorage.getItem("accessToken");
+      
+      fetch(`http://localhost:5000/customer/${urlCustomerId}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) setSelectedCustomer(data.customer);
+      })
+      .catch(err => console.error(err));
+    }
+  }, [searchParams]);
+
+  // ==========================================
+  // SUBMIT THE ORDER
+  // ==========================================
+  const handleCompleteOrder = async () => {
+    setIsSubmitting(true);
+    try {
+      const token = localStorage.getItem("accessToken");
+
+      const payload = {
+        // 🟢 Pass the ID of the selected customer!
+        customerId: customerMode === "walk-in" ? null : selectedCustomer?.id,
+        items: cart.map(item => ({
+          productId: item.id,
+          quantity: item.qty,
+          price: item.price
+        })),
+        discount: Number(discount),
+        amountPaid: Number(amountPaid),
+        paymentMethod,
+        orderStatus
+      };
+
+      const res = await fetch("http://localhost:5000/order/neworder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to create order");
+
+      alert("Order Successful!");
+      router.push(`/orders/${data.order.id}`);
+
+    } catch (error: any) {
+      alert(error.message); 
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Cart Functions
-  const addToCart = (product: { id: string; name: string; price: number }) => {
+  const addToCart = (product: Product) => {
+    if (product.stock === 0) return alert("Out of stock!");
     setCart((prev) => {
       const exists = prev.find((item) => item.id === product.id);
-      if (exists) return prev.map((item) => item.id === product.id ? { ...item, qty: item.qty + 1 } : item);
-      return[...prev, { ...product, qty: 1 }];
+      if (exists) {
+        if (exists.qty >= product.stock) { alert("Cannot exceed available stock!"); return prev; }
+        return prev.map((item) => item.id === product.id ? { ...item, qty: item.qty + 1 } : item);
+      }
+      return [...prev, { ...product, qty: 1 }];
     });
   };
 
@@ -53,15 +220,15 @@ export default function CreateOrderPOS() {
 
   // Math
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
-  const total = subtotal - discount;
+  const grandTotal = subtotal - (Number(discount) || 0);
+  const pendingAmount = grandTotal - (Number(amountPaid) || 0);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-80px)] overflow-hidden animate-in fade-in duration-500">
-      
-      {/* 🟢 TOP BAR */}
+    <div className="flex flex-col h-[calc(100vh-80px)] overflow-hidden animate-in fade-in duration-500 mt-2">
+
       <div className="flex items-center justify-between pb-4 border-b border-slate-200 shrink-0">
         <div className="flex items-center gap-3">
-          <Link href="/orders" className="p-2 text-slate-400 hover:text-slate-900 bg-white rounded-lg border border-slate-200">
+          <Link href="/orders" className="p-2 text-slate-400 hover:text-slate-900 bg-white rounded-lg border border-slate-200 transition-colors shadow-sm">
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
@@ -69,86 +236,128 @@ export default function CreateOrderPOS() {
             <p className="text-xs text-slate-500 hidden sm:block">Point of Sale (POS)</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-slate-400 bg-slate-100 px-2 py-1 rounded-md hidden sm:block">
-            Auto-saving Draft...
-          </span>
-        </div>
       </div>
 
-      {/* 🟢 SPLIT SCREEN LAYOUT */}
-      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden mt-4 gap-6">
-        
-        {/* ==========================================
-            LEFT SIDE: CATALOG & SEARCH
-        ========================================== */}
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden mt-5 gap-6">
+
+        {/* LEFT SIDE: CATALOG */}
         <div className="flex-1 flex flex-col overflow-hidden bg-white rounded-2xl border border-slate-200 shadow-sm">
-          {/* Search Bar */}
-          <div className="p-4 border-b border-slate-100 flex gap-2 shrink-0">
+          <div className="p-4 border-b border-slate-100 flex gap-3 shrink-0 bg-slate-50/50">
             <div className="relative flex-1">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-4 w-4 text-slate-400" />
-              </div>
-              <input
-                type="text"
-                placeholder="Search products..."
-                className="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none"
-              />
+              <Search className="h-4 w-4 text-slate-400 absolute left-3 top-3" />
+              <input type="text" autoFocus value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search products or scan barcode..." className="w-full pl-10 pr-10 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none shadow-sm" />
+              <Barcode className="h-4 w-4 text-slate-400 absolute right-3 top-3" />
             </div>
-            <button className="whitespace-nowrap px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-800 transition-colors hidden sm:block">
-              + Custom Item
-            </button>
           </div>
 
-          {/* Product Grid */}
+          <div className="px-4 pt-3 pb-2 flex items-center gap-2 overflow-x-auto hide-scrollbar border-b border-slate-100 shrink-0">
+            {categories.map(cat => (
+              <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${activeCategory === cat ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{cat}</button>
+            ))}
+          </div>
+
           <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {mockProducts.map((product) => (
-                <button
-                  key={product.id}
-                  onClick={() => addToCart(product)}
-                  className="flex flex-col text-left bg-white p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:shadow-md transition-all active:scale-95"
-                >
-                  <span className="font-semibold text-slate-900 text-sm line-clamp-2 mb-2">{product.name}</span>
-                  <span className="text-blue-600 font-bold mt-auto">Rs. {product.price.toLocaleString()}</span>
-                </button>
-              ))}
-            </div>
+            {isLoadingProducts ? (
+              <div className="h-full flex items-center justify-center text-slate-400 text-sm">Loading products...</div>
+            ) : (
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                {products.map((product) => (
+                  <button key={product.id} onClick={() => addToCart(product)} disabled={product.stock === 0} className={`flex flex-col text-left bg-white p-4 rounded-xl border transition-all active:scale-95 shadow-sm relative overflow-hidden ${product.stock === 0 ? 'border-slate-200 opacity-60 cursor-not-allowed' : 'border-slate-200 hover:border-blue-500 hover:shadow-md'}`}>
+                    <span className="font-bold text-slate-900 text-sm line-clamp-2 mb-1">{product.name}</span>
+                    <span className="text-[10px] font-mono text-slate-500 mb-3 flex items-center gap-1"><Barcode className="w-3 h-3" /> {product.sku || 'N/A'}</span>
+                    <div className="mt-auto flex items-end justify-between w-full">
+                      <span className="text-blue-600 font-black text-sm">Rs. {product.price.toLocaleString()}</span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${product.stock > 5 ? 'bg-emerald-50 text-emerald-600' : product.stock > 0 ? 'bg-yellow-50 text-yellow-600' : 'bg-rose-50 text-rose-600'}`}>
+                        {product.stock === 0 ? 'Out of stock' : `${product.stock} left`}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
+        {/* RIGHT SIDE: CART */}
+        <div className="w-full lg:w-[420px] flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden shrink-0 h-full">
 
-        {/* ==========================================
-            RIGHT SIDE: CART & CHECKOUT LEDGER
-        ========================================== */}
-        <div className="w-full lg:w-[400px] flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden shrink-0 h-full">
-          
-          {/* 1. Customer Selection */}
           <div className="p-4 border-b border-slate-100 bg-slate-50 shrink-0">
-            <div className="flex bg-white rounded-lg p-1 border border-slate-200">
-              <button 
-                onClick={() => setCustomerMode("walk-in")}
-                className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors ${customerMode === "walk-in" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100"}`}
-              >
-                Walk-in Customer
-              </button>
-              <button 
-                onClick={() => setCustomerMode("existing")}
-                className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors ${customerMode === "existing" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100"}`}
-              >
-                Existing / Search
-              </button>
+            <div className="flex bg-white rounded-lg p-1 border border-slate-200 shadow-sm">
+              <button onClick={() => { setCustomerMode("walk-in"); setSelectedCustomer(null); }} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${customerMode === "walk-in" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:bg-slate-100"}`}>Walk-in Customer</button>
+              <button onClick={() => setCustomerMode("existing")} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${customerMode === "existing" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:bg-slate-100"}`}>Existing / Search</button>
             </div>
+
+            {/* 🟢 REAL CUSTOMER SEARCH UI */}
             {customerMode === "existing" && (
               <div className="mt-3 relative">
-                <Search className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
-                <input type="text" placeholder="Search by name or phone..." className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-blue-500" />
+                {!selectedCustomer ? (
+                  <>
+                    <Search className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
+                    <input 
+                      type="text" 
+                      value={customerSearch}
+                      onChange={(e) => setCustomerSearch(e.target.value)}
+                      placeholder="Search customer by name or phone..." 
+                      className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm transition-all" 
+                    />
+
+                    {/* Auto-Complete Dropdown */}
+                    {customerSearch.length >= 2 && (
+                      <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                        {isSearchingCustomer ? (
+                          <div className="p-3 text-xs text-center text-slate-500 font-medium">Searching...</div>
+                        ) : customerResults.length > 0 ? (
+                          customerResults.map((cust) => (
+                            <div 
+                              key={cust.id} 
+                              onClick={() => {
+                                setSelectedCustomer(cust);
+                                setCustomerSearch("");
+                              }}
+                              className="p-3 hover:bg-blue-50 cursor-pointer border-b border-slate-100 last:border-0 transition-colors"
+                            >
+                              <p className="text-sm font-bold text-slate-900">{cust.name}</p>
+                              <div className="flex items-center justify-between mt-0.5">
+                                <p className="text-xs font-medium text-slate-500">{cust.phone}</p>
+                                {cust.balance > 0 && <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">Owes Rs. {cust.balance.toLocaleString()}</span>}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="p-3 text-xs text-center text-slate-500">No customers found.</div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* 🟢 SELECTED CUSTOMER BADGE */
+                  <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg shadow-sm">
+                    <div>
+                      <p className="text-sm font-bold text-blue-900">{selectedCustomer.name}</p>
+                      <p className="text-xs font-medium text-blue-700 mt-0.5">{selectedCustomer.phone}</p>
+                    </div>
+                    <button 
+                      onClick={() => setSelectedCustomer(null)} 
+                      className="p-1.5 text-blue-400 hover:text-rose-600 hover:bg-white rounded-md transition-colors shadow-sm border border-transparent hover:border-rose-100"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Walk-in Udhaar Warning */}
+            {customerMode === "walk-in" && pendingAmount > 0 && cart.length > 0 && (
+              <div className="mt-3 text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-100 p-2 rounded-lg flex items-start gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                Walk-in customers cannot take Udhaar. Please select a customer profile.
               </div>
             )}
           </div>
 
-          {/* 2. Cart Items List */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {/* Cart Items */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/30">
             {cart.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
                 <Receipt className="w-12 h-12 opacity-20" />
@@ -156,65 +365,68 @@ export default function CreateOrderPOS() {
               </div>
             ) : (
               cart.map((item) => (
-                <div key={item.id} className="flex items-center justify-between bg-white border border-slate-100 p-3 rounded-xl shadow-sm">
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-slate-900">{item.name}</p>
-                    <p className="text-xs text-slate-500">Rs. {item.price.toLocaleString()}</p>
+                <div key={item.id} className="flex items-center justify-between bg-white border border-slate-200 p-3 rounded-xl shadow-sm">
+                  <div className="flex-1 pr-3">
+                    <p className="text-sm font-bold text-slate-900 leading-tight">{item.name}</p>
+                    <p className="text-xs font-medium text-slate-500 mt-1">Rs. {item.price.toLocaleString()}</p>
                   </div>
-                  
-                  {/* Qty Controls */}
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center bg-slate-100 rounded-lg border border-slate-200">
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex items-center bg-slate-100 rounded-lg border border-slate-200 shadow-sm">
                       <button onClick={() => updateQty(item.id, -1)} className="p-1 hover:bg-slate-200 rounded-l-lg"><Minus className="w-4 h-4 text-slate-600" /></button>
-                      <span className="w-6 text-center text-sm font-semibold">{item.qty}</span>
+                      <span className="w-8 text-center text-sm font-bold text-slate-900">{item.qty}</span>
                       <button onClick={() => updateQty(item.id, 1)} className="p-1 hover:bg-slate-200 rounded-r-lg"><Plus className="w-4 h-4 text-slate-600" /></button>
                     </div>
-                    <button onClick={() => removeItem(item.id)} className="p-1 text-slate-400 hover:text-rose-500"><Trash2 className="w-4 h-4" /></button>
+                    <button onClick={() => removeItem(item.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 </div>
               ))
             )}
           </div>
 
-          {/* 3. Totals & Checkout Panel */}
-          <div className="p-4 border-t border-slate-200 bg-slate-50 shrink-0">
-            
-            {/* Discount Row */}
-            <div className="flex items-center justify-between mb-3">
-              <button className="flex items-center gap-1 text-sm text-blue-600 font-medium hover:underline">
-                <Tag className="w-3.5 h-3.5" /> Add Discount
-              </button>
-              {discount > 0 && <span className="text-sm text-rose-600 font-medium">- Rs. {discount}</span>}
+          <div className="p-5 border-t border-slate-200 bg-slate-50 shrink-0 space-y-4">
+            <div className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-sm">
+              <label className="flex items-center gap-1.5 text-sm font-bold text-slate-700">
+                <Tag className="w-4 h-4 text-blue-600" /> Discount (Rs)
+              </label>
+              <input type="number" min="0" value={discount} onChange={(e) => setDiscount(Number(e.target.value) || 0)} className="w-24 text-right outline-none font-bold text-rose-600 bg-transparent placeholder-slate-300" placeholder="0" />
             </div>
 
-            {/* Total Row */}
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-slate-600 font-medium">Grand Total</span>
-              <span className="text-2xl font-bold text-slate-900">Rs. {total.toLocaleString()}</span>
+            <div className="flex items-end justify-between">
+              <span className="text-slate-500 font-bold uppercase tracking-wider text-xs">Grand Total</span>
+              <span className="text-3xl font-black text-slate-900 tracking-tight leading-none">Rs. {grandTotal.toLocaleString()}</span>
             </div>
 
-            {/* Payment Toggle (Instant Capture) */}
-            <div className="mb-4 bg-white border border-slate-200 rounded-xl p-3 flex items-center justify-between cursor-pointer" onClick={() => setIsPaidNow(!isPaidNow)}>
-              <div className="flex items-center gap-2">
-                <div className={`p-1.5 rounded-md ${isPaidNow ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                  <Wallet className="w-4 h-4" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">Payment Received</p>
-                  <p className="text-xs text-slate-500">Auto-record payment now</p>
+            <hr className="border-slate-200" />
+
+            <div className="flex items-start gap-3">
+              <div className="flex-1">
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                  Amount Received
+                  {pendingAmount > 0 && cart.length > 0 && (
+                    <button onClick={() => setAmountPaid(grandTotal.toString())} className="text-blue-600 hover:underline text-[10px]">Pay in Full</button>
+                  )}
+                </label>
+                <div className="relative">
+                  <Wallet className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input type="number" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} placeholder="0" className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
               </div>
-              <div className={`w-10 h-6 rounded-full p-1 transition-colors ${isPaidNow ? 'bg-emerald-500' : 'bg-slate-200'}`}>
-                <div className={`bg-white w-4 h-4 rounded-full shadow-sm transform transition-transform ${isPaidNow ? 'translate-x-4' : 'translate-x-0'}`} />
+              <div className="w-1/3">
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Method</label>
+                <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white cursor-pointer">
+                  <option value="CASH">Cash</option>
+                  <option value="BANK">Bank</option>
+                </select>
               </div>
             </div>
 
-            {/* Save Button */}
-            <button 
-              disabled={cart.length === 0}
-              className="w-full py-3.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
+            <button
+              onClick={handleCompleteOrder}
+              disabled={cart.length === 0 || (customerMode === "walk-in" && pendingAmount > 0) || isSubmitting}
+              className="w-full py-4 mt-2 bg-blue-600 text-white rounded-xl font-bold text-base hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
             >
-              Complete Order <CheckCircle2 className="w-5 h-5" />
+              {isSubmitting ? "Processing..." : "Complete Order"}
+              {!isSubmitting && <CheckCircle2 className="w-5 h-5" />}
             </button>
           </div>
 
