@@ -82,6 +82,21 @@ export default function ProductsPage() {
 
   const [newCategoryName, setNewCategoryName] = useState("");
 
+  const fetchCategories = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/product/getcategories`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await response.json();
+      if (data.success) {
+        const names = data.categories.map((c: any) => c.name);
+        setCategories(names.sort());
+      }
+    } catch (error) {
+      console.error("Failed to fetch categories", error);
+    }
+  }, []);
+
   const refreshProducts = useCallback(async () => {
     setIsLoadingProducts(true);
     setPageError("");
@@ -105,12 +120,6 @@ export default function ProductsPage() {
 
       const normalizedProducts = ((data?.products || []) as ProductRecord[]).map(normalizeProduct);
       setProducts(normalizedProducts);
-
-      const productCategories = normalizedProducts
-        .map((product) => product.category)
-        .filter((category): category is string => Boolean(category));
-
-      setCategories((currentCategories) => Array.from(new Set([...currentCategories, ...productCategories])).sort());
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Failed to load products");
       setProducts([]);
@@ -153,12 +162,12 @@ export default function ProductsPage() {
       throw new Error(data?.message || data?.error || "Failed to add category");
     }
 
-    setCategories((currentCategories) => Array.from(new Set([...currentCategories, trimmedName])).sort());
+    await fetchCategories();
     setIsCategoryModalOpen(false);
     setNewCategoryName("");
   };
 
-   useEffect(() => {
+  useEffect(() => {
     // Create a new URL parameter object
     const params = new URLSearchParams(searchParams.toString());
 
@@ -178,6 +187,10 @@ export default function ProductsPage() {
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     
   }, [searchQuery, activeCategory, stockFilter, pathname, router, searchParams]);
+
+  useEffect(() => {
+    void fetchCategories();
+  }, [fetchCategories]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
