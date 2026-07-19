@@ -1,41 +1,145 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { Plus, Search, Filter, Calendar, MessageCircle, Package, LayoutList, KanbanSquare, Download } from "lucide-react";
+import { Plus, Search, Calendar, MessageCircle, Package, LayoutList, KanbanSquare, Download, AlertCircle } from "lucide-react";
 import OrderMetrics from "@/components/orders/OrderMetrics";
 import OrderTable from "@/components/orders/OrderTable";
 import OrderPagination from "@/components/orders/OrderPagination";
 
-// --- MOCK DATA ---
-const mockOrders =[
-  { id: "ORD-1045", customer: "Zain Ahmed", phone: "03001234567", items: 3, total: 45000, status: "PENDING", payment: "PARTIAL", dispatch: "TCS", date: "Today, 10:30 AM" },
-  { id: "ORD-1044", customer: "Waqas Ali", phone: "03219876543", items: 1, total: 12000, status: "COMPLETED", payment: "UNPAID", dispatch: "Bykea", date: "Yesterday" },
-  { id: "ORD-1043", customer: "Fatima Store", phone: "03334567890", items: 12, total: 125000, status: "COMPLETED", payment: "PAID", dispatch: "Self-Pickup", date: "2 days ago" },
-  { id: "ORD-1042", customer: "Hassan Raza", phone: "03111122334", items: 2, total: 8500, status: "PENDING", payment: "UNPAID", dispatch: "Leopards", date: "3 days ago" },
-  { id: "ORD-1041", customer: "Ayesha Khan", phone: "03455566778", items: 1, total: 5000, status: "COMPLETED", payment: "PAID", dispatch: "InDrive", date: "Last Week" },
-];
+const API_BASE_URL = "http://localhost:5000";
+
+const getAuthHeaders = () => {
+  if (typeof window === "undefined") {
+    return { "Content-Type": "application/json" };
+  }
+
+  const accessToken = localStorage.getItem("accessToken");
+  return {
+    "Content-Type": "application/json",
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  };
+};
+
+const getFriendlyDate = (dateStr: string) => {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffTime = Math.abs(now.getTime() - date.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays <= 1) {
+    if (date.getDate() === now.getDate()) {
+      return `Today, ${date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`;
+    }
+    return "Yesterday";
+  }
+  if (diffDays === 2) return "2 days ago";
+  if (diffDays === 3) return "3 days ago";
+  if (diffDays <= 7) return `${diffDays} days ago`;
+  
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
 
 export default function OrdersHubPage() {
   const [activeTab, setActiveTab] = useState("needs-attention");
   const [viewMode, setViewMode] = useState<"list" | "board">("list");
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
+  
+  const [orders, setOrders] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [days, setDays] = useState(7);
+  const [isDaysMenuOpen, setIsDaysMenuOpen] = useState(false);
+
+  // 🟢 NEW PAGINATION STATE
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+
+  // Debounce search query
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      setCurrentPage(1); // Reset to page 1 when searching
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  // When changing tabs, reset pagination
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab]);
+
+  const refreshOrders = useCallback(async () => {
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const params = new URLSearchParams();
+      if (debouncedSearchQuery) params.set("search", debouncedSearchQuery);
+      params.set("days", days.toString());
+
+      const response = await fetch(`${API_BASE_URL}/order/getallorders?${params.toString()}`, {
+        headers: getAuthHeaders(),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) throw new Error(data?.message || data?.error || "Failed to load orders");
+
+      const rawOrders = data?.orders || [];
+      const normalized = rawOrders.map((order: any) => ({
+        id: order.id,
+        // 🟢 FIX: Map the auto-increment orderNumber from DB
+        orderNumber: `ORD-${order.orderNumber || order.id.substring(0, 4)}`, 
+        customer: order.customer ? order.customer.name : "Walk-in Customer",
+        phone: order.customer ? order.customer.phone : "N/A",
+        total: Number(order.totalAmount ?? 0),
+        status: order.status,
+        paymentStatus: order.paymentStatus, // Use actual database field name
+        pendingBalance: Number(order.pendingBalance ?? 0), // Use exact math from backend!
+        date: getFriendlyDate(order.createdAt),
+      }));
+
+      setOrders(normalized);
+    } catch (err: any) {
+      setError(err.message || "Failed to load orders");
+      setOrders([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [debouncedSearchQuery, days]);
+
+  useEffect(() => {
+    void refreshOrders();
+  }, [refreshOrders]);
 
   // 🟢 SMART FILTER LOGIC
-  const filteredOrders = mockOrders.filter(order => {
-    if (activeTab === "pending") return order.status === "PENDING";
-    if (activeTab === "completed") return order.status === "COMPLETED";
-    if (activeTab === "needs-attention") return order.status === "COMPLETED" && order.payment !== "PAID";
-    return true; // "all-orders"
-  });
+  const filteredOrders = useMemo(() => {
+    return orders.filter(order => {
+      if (activeTab === "pending") return order.status === "PENDING";
+      if (activeTab === "completed") return order.status === "COMPLETED";
+      if (activeTab === "needs-attention") return order.status === "COMPLETED" && order.paymentStatus !== "PAID";
+      if (activeTab === "all-orders") return order.status !== "CANCELLED";
+      return true; 
+    });
+  }, [orders, activeTab]);
+
+  // 🟢 PAGINATION LOGIC
+  const totalItems = filteredOrders.length;
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+  const indexOfLastItem = currentPage * ITEMS_PER_PAGE;
+  const indexOfFirstItem = indexOfLastItem - ITEMS_PER_PAGE;
+  const currentOrdersOnPage = filteredOrders.slice(indexOfFirstItem, indexOfLastItem);
 
   const toggleSelection = (id: string) => {
     setSelectedOrders(prev => prev.includes(id) ? prev.filter(orderId => orderId !== id) : [...prev, id]);
   };
 
   const toggleAll = () => {
-    if (selectedOrders.length === filteredOrders.length) setSelectedOrders([]);
-    else setSelectedOrders(filteredOrders.map(o => o.id));
+    if (selectedOrders.length === currentOrdersOnPage.length) setSelectedOrders([]);
+    else setSelectedOrders(currentOrdersOnPage.map(o => o.id));
   };
 
   return (
@@ -66,40 +170,93 @@ export default function OrdersHubPage() {
                 onClick={() => setActiveTab(id)}
                 className={`px-4 py-2 text-sm font-medium rounded-full whitespace-nowrap transition-colors ${activeTab === id ? (id === "needs-attention" ? "bg-rose-100 text-rose-700" : "bg-slate-900 text-white") : "bg-transparent text-slate-600 hover:bg-slate-100"}`}
               >
-                {tab} {id === "needs-attention" && <span className="ml-2 inline-flex items-center justify-center bg-rose-500 text-white text-[10px] w-5 h-5 rounded-full">2</span>}
+                {tab} 
+                {/* Dynamically show count on the Needs Attention tab! */}
+                {id === "needs-attention" && (
+                  <span className="ml-2 inline-flex items-center justify-center bg-rose-500 text-white text-[10px] w-5 h-5 rounded-full">
+                    {orders.filter(o => o.status === "COMPLETED" && o.paymentStatus !== "PAID").length}
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
-        
-        <div className="flex items-center bg-slate-100 p-1 rounded-lg shrink-0">
-          <button onClick={() => setViewMode("list")} className={`p-1.5 rounded-md ${viewMode === "list" ? "bg-white shadow-sm text-blue-600" : "text-slate-500"}`}><LayoutList className="w-4 h-4" /></button>
-          <button onClick={() => setViewMode("board")} className={`p-1.5 rounded-md ${viewMode === "board" ? "bg-white shadow-sm text-blue-600" : "text-slate-500"}`}><KanbanSquare className="w-4 h-4" /></button>
-        </div>
       </div>
 
       {/* SEARCH BAR */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex flex-col sm:flex-row gap-3 relative">
         <div className="relative flex-1">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Search className="w-4 h-4 text-slate-400" /></div>
-          <input type="text" placeholder="Search by Order ID, Customer, or Phone..." className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500" />
+          <input 
+            type="text" 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by Order ID, Customer, or Phone..." 
+            className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-500" 
+          />
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium bg-white hover:bg-slate-50"><Calendar className="w-4 h-4" /> Last 7 Days</button>
-        <button className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium bg-white hover:bg-slate-50"><Filter className="w-4 h-4" /> Filters</button>
+        <div className="relative">
+          <button 
+            onClick={() => setIsDaysMenuOpen(!isDaysMenuOpen)}
+            className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium bg-white hover:bg-slate-50 w-full sm:w-auto"
+          >
+            <Calendar className="w-4 h-4" /> Last {days} Days
+          </button>
+          {isDaysMenuOpen && (
+            <div className="absolute right-0 top-12 w-48 bg-white rounded-xl shadow-lg border border-slate-200 p-2 z-20 animate-in fade-in slide-in-from-top-2">
+              {[7, 30, 90, 365].map((d) => (
+                <button
+                  key={d}
+                  onClick={() => { setDays(d); setIsDaysMenuOpen(false); }}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${days === d ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50"}`}
+                >
+                  Last {d} Days
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* 🟢 NEW METRICS WIDGET */}
+      {/* 🟢 NEW METRICS WIDGET (Must use filteredOrders for exact totals) */}
       <OrderMetrics orders={filteredOrders} activeTab={activeTab} />
 
       {/* 🟢 DATA TABLE & PAGINATION */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex-1 flex flex-col">
-        <OrderTable 
-          orders={filteredOrders} 
-          selectedOrders={selectedOrders} 
-          toggleSelection={toggleSelection} 
-          toggleAll={toggleAll} 
-        />
-        <OrderPagination totalItems={filteredOrders.length} />
+        {error && (
+          <div className="bg-rose-50 border-b border-rose-100 px-6 py-3 text-sm text-rose-700 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4" /> {error}
+          </div>
+        )}
+        {isLoading ? (
+          <div className="p-8 text-center text-slate-500 text-sm">
+            Loading orders from server...
+          </div>
+        ) : currentOrdersOnPage.length === 0 ? (
+          <div className="p-12 text-center text-slate-500 text-sm">
+            No orders found matching your filters.
+          </div>
+        ) : (
+          <OrderTable 
+            orders={currentOrdersOnPage} // 🟢 Pass only 10 items!
+            selectedOrders={selectedOrders} 
+            toggleSelection={toggleSelection} 
+            toggleAll={toggleAll} 
+          />
+        )}
+        
+        {/* 🟢 PASS PROPS TO PAGINATION */}
+        {totalItems > 0 && (
+          <OrderPagination 
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            indexOfFirstItem={indexOfFirstItem + 1}
+            indexOfLastItem={Math.min(indexOfLastItem, totalItems)}
+            onNextPage={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+            onPrevPage={() => setCurrentPage(p => Math.max(p - 1, 1))}
+          />
+        )}
       </div>
 
       {/* FLOATING BULK ACTION BAR */}
