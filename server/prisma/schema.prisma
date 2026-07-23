@@ -118,7 +118,8 @@ model Order {
   status        OrderStatus
   paymentStatus PaymentStatus @default(UNPAID)
   totalAmount   Float
-  createdBy     String?   
+  createdBy     String?  
+  orderNumber   Int      @default(autoincrement()) 
 
   creator   User?       @relation("OrderCreator", fields: [createdBy], references: [id])
   customer  Customer?    @relation(fields: [customerId], references: [id])
