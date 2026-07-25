@@ -266,7 +266,6 @@ export const getCustomerById = async (req, res) => {
             },
             include: {
                 orders: {
-                    where: { status: { not: "CANCELLED" } },
                     include: {
                         payments: true,
                     },
@@ -279,21 +278,24 @@ export const getCustomerById = async (req, res) => {
             return res.status(404).json({ message: "Customer not found." });
         }
 
-        let totalOrders = customer.orders.length;
         let lifetimeSpend = 0;
-        let totalPaid = 0;
+        let totalOutstanding = 0;
+        let validOrderCount = 0;
 
         const orderHistory = customer.orders.map(order => {
             let orderTotal = order.totalAmount;
             let orderPaid = order.payments.reduce((sum, p) => sum + p.amount, 0);
             let orderBalance = orderTotal - orderPaid;
 
-            lifetimeSpend += orderTotal;
-            totalPaid += orderPaid;
+            if (order.status !== "CANCELLED") {
+                validOrderCount += 1;
+                lifetimeSpend += orderTotal;
+                totalOutstanding += orderBalance;
+            }
 
             return {
                 id: order.id,
-                orderNumber: order.orderNumber,
+                orderNumber: `ORD-${order.orderNumber || order.id.substring(0, 4)}`, // Format nicely for UI
                 date: new Date(order.createdAt).toLocaleDateString('en-US', {
                     month: 'short',
                     day: 'numeric',
@@ -305,8 +307,6 @@ export const getCustomerById = async (req, res) => {
                 balance: orderBalance > 0 ? orderBalance : 0
             };
         });
-
-        const outstandingBalance = lifetimeSpend - totalPaid;
 
         const formattedCustomer = {
             id: customer.id,
@@ -323,9 +323,9 @@ export const getCustomerById = async (req, res) => {
                 year: 'numeric'
             }),
             metrics: {
-                totalOrders,
+                totalOrders: validOrderCount,
                 lifetimeValue: lifetimeSpend,
-                outstandingBalance: outstandingBalance > 0 ? outstandingBalance : 0
+                outstandingBalance: totalOutstanding > 0 ? totalOutstanding : 0
             },
             orderHistory
         };
