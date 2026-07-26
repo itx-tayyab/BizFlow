@@ -52,7 +52,6 @@ export const InviteStaff = async (req, res) => {
 export const InvitedByToken = async (req, res) => {
   try {
     const { token } = req.params;
-    const { name, password } = req.body;
 
     if (!token) {
       return res.status(400).json({ success: false, message: "Token is required" });
