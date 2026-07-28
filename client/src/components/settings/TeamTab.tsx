@@ -26,6 +26,7 @@ export default function TeamTab() {
   const [pending, setPending] = useState<PendingInvite[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [processing, setProcessing] = useState<{ email: string; action: "resend" | "cancel" } | null>(null);
 
   const getAuthHeaders = () => {
     const headers: HeadersInit = { "Content-Type": "application/json" };
@@ -94,6 +95,51 @@ export default function TeamTab() {
   } catch {
     currentBusinessId = null;
   }
+
+  const handleResendInvite = async (email: string) => {
+    setError(null);
+    setProcessing({ email, action: "resend" });
+    try {
+      const res = await fetch("http://localhost:5000/team/resendinvite", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ email, businessId: currentBusinessId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "Failed to resend invitation");
+      }
+      await loadTeamData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to resend invitation");
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const handleCancelInvite = async (email: string) => {
+    if (!confirm(`Are you sure you want to cancel the invitation for ${email}?`)) {
+      return;
+    }
+    setError(null);
+    setProcessing({ email, action: "cancel" });
+    try {
+      const res = await fetch("http://localhost:5000/team/cancelinvite", {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "Failed to cancel invitation");
+      }
+      await loadTeamData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to cancel invitation");
+    } finally {
+      setProcessing(null);
+    }
+  };
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-6">
@@ -260,11 +306,21 @@ export default function TeamTab() {
                       </td>
                       <td className="px-5 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <button className="flex items-center gap-1.5 px-3 py-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors text-xs font-semibold border border-transparent hover:border-blue-100 bg-white shadow-sm">
-                            <Mail className="w-3.5 h-3.5" /> Resend
+                          <button 
+                            onClick={() => handleResendInvite(invite.email)}
+                            disabled={processing !== null}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors text-xs font-semibold border border-transparent hover:border-blue-100 bg-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Mail className="w-3.5 h-3.5" />
+                            {processing?.email === invite.email && processing?.action === "resend" ? "Resending..." : "Resend"}
                           </button>
-                          <button className="flex items-center gap-1.5 px-3 py-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 rounded-md transition-colors text-xs font-semibold border border-transparent hover:border-rose-100 bg-white shadow-sm">
-                            <XCircle className="w-3.5 h-3.5" /> Cancel
+                          <button 
+                            onClick={() => handleCancelInvite(invite.email)}
+                            disabled={processing !== null}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 rounded-md transition-colors text-xs font-semibold border border-transparent hover:border-rose-100 bg-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            {processing?.email === invite.email && processing?.action === "cancel" ? "Canceling..." : "Cancel"}
                           </button>
                         </div>
                       </td>
