@@ -1,13 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckSquare, Square, ChevronDown, CheckCircle2, Clock, AlertCircle, Truck } from "lucide-react";
+import { CheckSquare, Square, CheckCircle2, Clock, AlertCircle } from "lucide-react";
 
-export default function OrderTable({ 
-  orders, selectedOrders, toggleSelection, toggleAll 
-}: { 
-  orders: any[], selectedOrders: string[], toggleSelection: (id: string) => void, toggleAll: () => void 
+export default function OrderTable({
+  orders, selectedOrders, toggleSelection, toggleAll
+}: {
+  orders: any[], selectedOrders: string[], toggleSelection: (id: string) => void, toggleAll: () => void
 }) {
   const router = useRouter();
 
@@ -26,65 +25,83 @@ export default function OrderTable({
             <th className="px-4 py-3 font-semibold">Total</th>
             <th className="px-4 py-3 font-semibold">Status</th>
             <th className="px-4 py-3 font-semibold">Payment</th>
-            <th className="px-4 py-3 font-semibold">Dispatch</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {orders.map((order) => (
-            <tr 
-              key={order.id} 
-              className={`hover:bg-slate-50 cursor-pointer transition-colors ${selectedOrders.includes(order.id) ? "bg-blue-50/50" : ""}`}
-              onClick={() => router.push(`/orders/${order.id}`)} 
+            <tr
+              key={order.id}
+              className={`hover:bg-slate-50 cursor-pointer transition-colors ${selectedOrders.includes(order.id) ? "bg-blue-50/50" : ""} ${order.status === 'CANCELLED' ? 'opacity-60 bg-slate-50' : ''}`}
+              onClick={() => router.push(`/orders/${order.id}`)}
             >
+              {/* Checkbox */}
               <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
                 <button onClick={() => toggleSelection(order.id)} className="text-slate-400 hover:text-blue-600">
                   {selectedOrders.includes(order.id) ? <CheckSquare className="w-5 h-5 text-blue-600" /> : <Square className="w-5 h-5" />}
                 </button>
               </td>
-              
-              <td className="px-4 py-4 font-semibold text-blue-600 hover:underline">{order.id}</td>
-              
+
+              {/* 🟢 Beautiful Order Number (e.g., ORD-1044) */}
+              <td className="px-4 py-4 font-semibold text-blue-600 hover:underline">
+                {order.orderNumber}
+              </td>
+
+              {/* Customer Details */}
               <td className="px-4 py-4">
                 <div className="flex flex-col">
-                  <span className="font-medium text-slate-900">{order.customer}</span>
-                  <span className="text-xs text-slate-500">{order.date}</span>
-                </div>
-              </td>
-              
-              <td className="px-4 py-4 font-medium">Rs. {order.total.toLocaleString()}</td>
-              
-              {/* 🟢 POLISHED SAAS DROPDOWN */}
-              <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
-                <div className="relative inline-block">
-                  <select 
-                    defaultValue={order.status}
-                    className={`appearance-none border py-1 pl-3 pr-8 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 cursor-pointer transition-colors ${
-                      order.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 focus:ring-emerald-500' : 
-                      order.status === 'PENDING' ? 'bg-blue-50 text-blue-700 border-blue-200 focus:ring-blue-500' :
-                      'bg-slate-50 text-slate-700 border-slate-200'
-                    }`}
-                  >
-                    <option value="PENDING">Pending</option>
-                    <option value="COMPLETED">Completed</option>
-                    <option value="CANCELLED">Cancelled</option>
-                  </select>
-                  <ChevronDown className={`w-3 h-3 absolute right-2.5 top-2 pointer-events-none ${order.status === 'COMPLETED' ? 'text-emerald-500' : 'text-blue-500'}`} />
+                  <span className={`font-bold ${order.status === 'CANCELLED' ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
+                    {order.customer}
+                  </span>
+                  <span className="text-xs text-slate-500 font-medium mt-0.5">{order.date}</span>
                 </div>
               </td>
 
-              <td className="px-4 py-4">
-                 {order.payment === "PAID" && <span className="inline-flex items-center gap-1 py-1 px-2.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700"><CheckCircle2 className="w-3 h-3"/> PAID</span>}
-                 {order.payment === "PARTIAL" && <span className="inline-flex items-center gap-1 py-1 px-2.5 rounded-md text-[11px] font-bold bg-yellow-50 text-yellow-700"><Clock className="w-3 h-3"/> PARTIAL</span>}
-                 {order.payment === "UNPAID" && <span className="inline-flex items-center gap-1 py-1 px-2.5 rounded-md text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200"><AlertCircle className="w-3 h-3"/> UNPAID</span>}
+              {/* Total Amount */}
+              <td className="px-4 py-4 font-medium text-slate-700">
+                Rs. {(order.total || 0).toLocaleString()}
               </td>
-              
+
+              {/* 🟢 Static Status Badge (Safe from accidental clicks) */}
               <td className="px-4 py-4">
-                <span className="inline-flex items-center gap-1 text-xs text-slate-600 bg-slate-100 py-1 px-2 rounded-md border border-slate-200">
-                  <Truck className="w-3 h-3" /> {order.dispatch}
+                <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border ${
+                  order.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                  order.status === 'PENDING' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                  'bg-slate-100 text-slate-500 border-slate-200' // CANCELLED
+                }`}>
+                  {order.status}
                 </span>
               </td>
+
+              {/* Payment Status Badge */}
+              <td className="px-4 py-4">
+                {order.paymentStatus === "PAID" && (
+                  <span className="inline-flex items-center gap-1 py-1 px-2.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <CheckCircle2 className="w-3 h-3" /> PAID
+                  </span>
+                )}
+                {order.paymentStatus === "PARTIAL" && (
+                  <span className="inline-flex items-center gap-1 py-1 px-2.5 rounded-md text-[11px] font-bold bg-yellow-50 text-yellow-700 border border-yellow-200">
+                    <Clock className="w-3 h-3" /> PARTIAL
+                  </span>
+                )}
+                {order.paymentStatus === "UNPAID" && (
+                  <span className="inline-flex items-center gap-1 py-1 px-2.5 rounded-md text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                    <AlertCircle className="w-3 h-3" /> UNPAID
+                  </span>
+                )}
+              </td>
+              
             </tr>
           ))}
+
+          {/* Empty State Fallback (Just in case) */}
+          {orders.length === 0 && (
+            <tr>
+              <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                No orders found.
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>
