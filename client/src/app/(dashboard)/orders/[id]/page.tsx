@@ -1,97 +1,257 @@
 "use client";
 
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
 import { 
   ArrowLeft, Receipt, Wallet, MessageCircle, 
   History, FileText, Printer, ChevronDown, 
   CheckCircle2, RefreshCcw, Banknote, CreditCard,
-  User
+  User, AlertCircle, XCircle, Clock
 } from "lucide-react";
 
-// --- DEEP MOCK DATA ---
-const mockOrder = {
-  id: "ORD-1045",
-  status: "COMPLETED",
-  paymentStatus: "PARTIAL",
-  date: "Oct 24, 2026 - 10:30 AM",
-  customer: {
-    name: "Zain Ahmed",
-    phone: "923001234567",
-    type: "Loyal Customer"
-  },
-  items:[
-    { id: "1", name: "Samsung Galaxy S23", price: 210000, qty: 1, total: 210000 },
-    { id: "2", name: "Screen Protector", price: 1500, qty: 2, total: 3000 },
-  ],
-  financials: {
-    subtotal: 213000,
-    discount: 3000,
-    total: 210000,
-    paid: 150000,
-    balance: 60000
-  },
-  // Split Payments Array
-  payments:[
-    { id: "PAY-1", amount: 100000, method: "Bank Transfer", date: "Oct 24, 10:35 AM", receivedBy: "Ali (Owner)" },
-    { id: "PAY-2", amount: 50000, method: "Cash", date: "Oct 24, 11:00 AM", receivedBy: "Waqas (Staff)" }
-  ],
-  // Audit Trail
-  timeline:[
-    { time: "11:00 AM", event: "Payment of Rs. 50,000 (Cash) recorded by Waqas", type: "payment" },
-    { time: "10:35 AM", event: "Payment of Rs. 100,000 (Bank) recorded by Ali", type: "payment" },
-    { time: "10:32 AM", event: "Order marked as COMPLETED by Ali", type: "status" },
-    { time: "10:30 AM", event: "Order created by Ali", type: "create" }
-  ],
-  notes: "Customer promised to pay the remaining Rs. 60,000 balance next Friday after salary."
+// You will need to create this modal component next!
+import RecordPaymentModal from "@/components/modals/RecordPaymentModal";
+
+const API_BASE_URL = "http://localhost:5000";
+
+const getAuthHeaders = () => {
+  if (typeof window === "undefined") return { "Content-Type": "application/json" };
+  const accessToken = localStorage.getItem("accessToken");
+  return {
+    "Content-Type": "application/json",
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  };
 };
 
 export default function OrderDetailsLedger() {
-  // Pre-filled WhatsApp Message
-  const waMessage = encodeURIComponent(`Hello ${mockOrder.customer.name}, your order ${mockOrder.id} is confirmed. Total: Rs. ${mockOrder.financials.total.toLocaleString()}. View receipt: bizflow.com/p/shop/${mockOrder.id}`);
+  const { id } = useParams(); // The secret UUID from the URL
+  const router = useRouter();
+  
+  const [order, setOrder] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+  
+  // 🟢 Modal State for Recording Payments
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+
+  const refreshOrder = useCallback(async () => {
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/order/${id}`, {
+        headers: getAuthHeaders(),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) throw new Error(data?.message || data?.error || "Failed to load order");
+
+      const rawOrder = data?.order;
+      if (!rawOrder) throw new Error("Order data not found");
+
+      // Normalize items
+      const items = (rawOrder.items || []).map((item: any) => ({
+        id: item.id,
+        name: item.product?.name || "Unknown Product",
+        price: Number(item.price ?? 0),
+        qty: Number(item.quantity ?? 0),
+        total: Number(item.price ?? 0) * Number(item.quantity ?? 0),
+      }));
+
+      const subtotal = items.reduce((sum: number, item: any) => sum + item.total, 0);
+      const discount = Number(rawOrder.discount ?? 0);
+      const total = Number(rawOrder.totalAmount ?? 0);
+      const paid = (rawOrder.payments || []).reduce((sum: number, pay: any) => sum + Number(pay.amount ?? 0), 0);
+      const balance = Math.max(0, total - paid);
+
+      const payments = (rawOrder.payments || []).map((pay: any) => ({
+        id: pay.id,
+        amount: Number(pay.amount ?? 0),
+        method: pay.method === "CASH" ? "Cash" : pay.method === "BANK" ? "Bank Transfer" : "Online",
+        date: new Date(pay.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+        receivedBy: `${pay.receiver?.name || "Staff"} (${pay.receiver?.role || "Staff"})`
+      }));
+
+      // Generate timeline dynamically
+      const timeline: any[] = [];
+      
+      timeline.push({
+        time: new Date(rawOrder.createdAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+        event: `Order created by ${rawOrder.creator?.name || "Owner"}`,
+        type: "create",
+        dateObj: new Date(rawOrder.createdAt)
+      });
+
+      (rawOrder.payments || []).forEach((pay: any) => {
+        timeline.push({
+          time: new Date(pay.createdAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+          event: `Payment of Rs. ${pay.amount.toLocaleString()} (${pay.method === "CASH" ? "Cash" : pay.method === "BANK" ? "Bank" : "Online"}) recorded by ${pay.receiver?.name || "Staff"}`,
+          type: "payment",
+          dateObj: new Date(pay.createdAt)
+        });
+      });
+
+      timeline.sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime());
+
+      const normalized = {
+        id: rawOrder.id,
+        // 🟢 FIX: Use the clean Order Number for the UI!
+        orderNumber: `ORD-${rawOrder.orderNumber || rawOrder.id.substring(0, 4)}`,
+        status: rawOrder.status,
+        paymentStatus: rawOrder.paymentStatus,
+        date: new Date(rawOrder.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+        customer: {
+          name: rawOrder.customer ? rawOrder.customer.name : "Walk-in Customer",
+          phone: rawOrder.customer ? rawOrder.customer.phone : "N/A",
+          type: rawOrder.customer ? (rawOrder.customer.isDefaulter ? "Defaulter" : "Standard Customer") : "Walk-in",
+        },
+        items,
+        financials: { subtotal, discount, total, paid, balance },
+        payments,
+        timeline,
+        notes: rawOrder.notes || "No internal staff notes recorded."
+      };
+
+      setOrder(normalized);
+    } catch (err: any) {
+      setError(err.message || "Failed to load order");
+      setOrder(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    void refreshOrder();
+  }, [refreshOrder]);
+
+  const handleMarkAsCompleted = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/order/${id}/status`, {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status: "COMPLETED" }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data?.message || "Failed to update status");
+      }
+      await refreshOrder();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleCancelOrder = async () => {
+    const confirm = window.confirm("Are you sure you want to cancel this order? Stock will be returned to inventory.");
+    if (confirm) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/order/${id}/status`, {
+          method: "PATCH",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ status: "CANCELLED" }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data?.message || "Failed to cancel order");
+        }
+        await refreshOrder();
+      } catch (err: any) {
+        alert(err.message);
+      }
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-slate-500 text-sm animate-pulse">Loading order details...</div>
+      </div>
+    );
+  }
+
+  if (error || !order) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <div className="text-rose-600 font-medium flex items-center gap-2">
+          <AlertCircle className="w-5 h-5" /> {error || "Order not found"}
+        </div>
+        <Link href="/orders" className="text-sm text-blue-600 hover:underline">
+          Back to Orders
+        </Link>
+      </div>
+    );
+  }
+
+  const waMessage = encodeURIComponent(`Hello ${order.customer.name}, your order ${order.orderNumber} is confirmed. Total: Rs. ${order.financials.total.toLocaleString()}. View receipt: bizflow.com/p/shop/${order.id}`);
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in duration-500 pb-10">
+    <div className="flex flex-col gap-6 animate-in fade-in duration-500 pb-10 mt-2">
       
       {/* 🟢 TOP ACTION BAR */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+      <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border shadow-sm transition-colors ${order.status === 'CANCELLED' ? 'bg-slate-100 border-slate-200' : 'bg-white border-slate-200'}`}>
         <div className="flex items-center gap-4">
-          <Link href="/orders" className="p-2 text-slate-400 hover:text-slate-900 bg-slate-50 rounded-lg border border-slate-200 transition-colors">
+          <button onClick={() => router.push("/orders")} className="p-2 text-slate-400 hover:text-slate-900 bg-white rounded-lg border border-slate-200 transition-colors shadow-sm">
             <ArrowLeft className="w-5 h-5" />
-          </Link>
+          </button>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-xl font-bold text-slate-900">{mockOrder.id}</h1>
-              <span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-2.5 py-1 rounded-md flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5" /> {mockOrder.status}
+              {/* 🟢 Display the clean Order Number here! */}
+              <h1 className={`text-xl font-bold tracking-tight ${order.status === 'CANCELLED' ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
+                {order.orderNumber} 
+              </h1>
+              
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-md flex items-center gap-1 border ${
+                order.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                order.status === 'PENDING' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                'bg-slate-200 text-slate-600 border-slate-300'
+              }`}>
+                {order.status === 'COMPLETED' && <CheckCircle2 className="w-3.5 h-3.5" />}
+                {order.status === 'PENDING' && <Clock className="w-3.5 h-3.5" />}
+                {order.status === 'CANCELLED' && <XCircle className="w-3.5 h-3.5" />}
+                {order.status}
               </span>
             </div>
-            <p className="text-sm text-slate-500 mt-0.5">{mockOrder.date}</p>
+            <p className="text-sm text-slate-500 mt-0.5">{order.date}</p>
           </div>
         </div>
         
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors">
-            <Printer className="w-4 h-4" /> Print
-          </button>
-          <a 
-            href={`https://wa.me/${mockOrder.customer.phone}?text=${waMessage}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 bg-[#25D366] text-white rounded-xl text-sm font-medium hover:bg-[#20bd5a] transition-colors shadow-sm"
-          >
-            <MessageCircle className="w-4 h-4" /> Send Invoice
-          </a>
+          {order.status === "PENDING" && (
+            <button onClick={handleMarkAsCompleted} className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm shadow-blue-200">
+              <CheckCircle2 className="w-4 h-4" /> Mark as Completed
+            </button>
+          )}
+
+          {order.status !== "CANCELLED" && (
+            <>
+              <button className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors bg-white shadow-sm">
+                <Printer className="w-4 h-4" /> Print
+              </button>
+              <a href={`https://wa.me/${order.customer.phone}?text=${waMessage}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 bg-[#25D366] text-white rounded-xl text-sm font-medium hover:bg-[#20bd5a] transition-colors shadow-sm">
+                <MessageCircle className="w-4 h-4" /> Send Invoice
+              </a>
+            </>
+          )}
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6 items-start">
+      {/* 🔴 CANCELLED WARNING BANNER */}
+      {order.status === 'CANCELLED' && (
+        <div className="bg-slate-100 border border-slate-300 rounded-2xl p-4 flex items-center justify-center gap-2 text-slate-600 font-medium">
+          <AlertCircle className="w-5 h-5" /> This order was cancelled. Items have been returned to inventory.
+        </div>
+      )}
+
+      <div className={`flex flex-col lg:flex-row gap-6 items-start ${order.status === 'CANCELLED' ? 'opacity-70 pointer-events-none' : ''}`}>
         
-        {/* ==========================================
-            LEFT COLUMN: FINANCIAL LEDGER
-        ========================================== */}
+        {/* LEFT COLUMN: FINANCIAL LEDGER */}
         <div className="w-full lg:flex-1 space-y-6">
           
-          {/* 1. Order Items */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
               <h2 className="font-bold text-slate-900 flex items-center gap-2">
@@ -99,7 +259,7 @@ export default function OrderDetailsLedger() {
               </h2>
             </div>
             <div className="divide-y divide-slate-100">
-              {mockOrder.items.map((item) => (
+              {order.items.map((item: any) => (
                 <div key={item.id} className="p-4 flex items-center justify-between group hover:bg-slate-50 transition-colors">
                   <div>
                     <p className="font-semibold text-slate-900">{item.name}</p>
@@ -107,7 +267,6 @@ export default function OrderDetailsLedger() {
                   </div>
                   <div className="flex items-center gap-4">
                     <span className="font-bold text-slate-900">Rs. {item.total.toLocaleString()}</span>
-                    {/* Refund Action (SaaS Feature) */}
                     <button className="text-slate-400 hover:text-rose-500 p-1.5 rounded-md hover:bg-rose-50 transition-colors tooltip-trigger" title="Process Return/Refund">
                       <RefreshCcw className="w-4 h-4" />
                     </button>
@@ -116,40 +275,41 @@ export default function OrderDetailsLedger() {
               ))}
             </div>
             
-            {/* Ledger Math */}
             <div className="p-4 bg-slate-50 border-t border-slate-200 space-y-2">
               <div className="flex justify-between text-sm text-slate-600">
                 <span>Subtotal</span>
-                <span>Rs. {mockOrder.financials.subtotal.toLocaleString()}</span>
+                <span>Rs. {order.financials.subtotal.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between text-sm text-rose-600">
+              <div className="flex justify-between text-sm text-rose-600 font-medium">
                 <span>Discount</span>
-                <span>- Rs. {mockOrder.financials.discount.toLocaleString()}</span>
+                <span>- Rs. {order.financials.discount.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between text-lg font-bold text-slate-900 pt-2 border-t border-slate-200 mt-2">
+              <div className="flex justify-between text-lg font-black text-slate-900 pt-3 border-t border-slate-200 mt-2">
                 <span>Grand Total</span>
-                <span>Rs. {mockOrder.financials.total.toLocaleString()}</span>
+                <span>Rs. {order.financials.total.toLocaleString()}</span>
               </div>
             </div>
           </div>
 
-          {/* 2. Split Payments Logic */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <h2 className="font-bold text-slate-900 flex items-center gap-2">
                 <Wallet className="w-5 h-5 text-blue-600" /> Payment History
               </h2>
-              {mockOrder.financials.balance > 0 && (
-                <button className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors">
+              {/* 🟢 OPEN THE PAYMENT MODAL HERE! */}
+              {order.financials.balance > 0 && order.status !== 'CANCELLED' && (
+                <button 
+                  onClick={() => setIsPaymentModalOpen(true)}
+                  className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors shadow-sm"
+                >
                   Record Payment
                 </button>
               )}
             </div>
             
-            {/* List of Payments */}
             <div className="p-4 space-y-3">
-              {mockOrder.payments.map((payment) => (
-                <div key={payment.id} className="flex justify-between items-center p-3 border border-slate-100 rounded-xl bg-slate-50">
+              {order.payments.map((payment: any) => (
+                <div key={payment.id} className="flex justify-between items-center p-3 border border-slate-100 rounded-xl bg-slate-50 shadow-sm">
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-white rounded-lg shadow-sm border border-slate-100">
                       {payment.method === "Cash" ? <Banknote className="w-4 h-4 text-emerald-600" /> : <CreditCard className="w-4 h-4 text-blue-600" />}
@@ -164,62 +324,42 @@ export default function OrderDetailsLedger() {
               ))}
             </div>
 
-            {/* Remaining Balance Tracker */}
             <div className="p-4 bg-rose-50 border-t border-rose-100 flex items-center justify-between">
               <div>
                 <p className="text-sm font-bold text-rose-700">Remaining Balance</p>
                 <p className="text-xs text-rose-600/80 mt-0.5">Customer owes this amount</p>
               </div>
-              <span className="text-2xl font-black text-rose-700">Rs. {mockOrder.financials.balance.toLocaleString()}</span>
+              <span className="text-2xl font-black text-rose-700 tracking-tight">Rs. {order.financials.balance.toLocaleString()}</span>
             </div>
           </div>
 
         </div>
 
-        {/* ==========================================
-            RIGHT COLUMN: CONTEXT & AUDIT
-        ========================================== */}
+        {/* RIGHT COLUMN: CONTEXT & AUDIT */}
         <div className="w-full lg:w-[380px] space-y-6">
           
-          {/* Customer CRM Card */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
               <User className="w-4 h-4" /> Customer
             </h3>
             <div className="flex items-start justify-between">
               <div>
-                <p className="font-bold text-slate-900 text-lg">{mockOrder.customer.name}</p>
-                <p className="text-sm text-slate-500 mt-1">{mockOrder.customer.phone}</p>
+                <p className="font-bold text-slate-900 text-lg">{order.customer.name}</p>
+                <p className="text-sm text-slate-500 mt-1">{order.customer.phone}</p>
               </div>
               <span className="bg-blue-50 text-blue-700 text-xs font-semibold px-2 py-1 rounded-md">
-                {mockOrder.customer.type}
+                {order.customer.type}
               </span>
             </div>
           </div>
 
-          {/* Internal Notes (Hidden from public invoice) */}
-          <div className="bg-[#fffdf0] p-5 rounded-2xl border border-yellow-200 shadow-sm relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-1 h-full bg-yellow-400" />
-            <h3 className="text-xs font-bold text-yellow-800 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <FileText className="w-4 h-4" /> Internal Staff Notes
-            </h3>
-            <p className="text-sm text-yellow-900/80 leading-relaxed italic">
-              "{mockOrder.notes}"
-            </p>
-            <button className="text-xs font-medium text-yellow-700 mt-3 hover:underline">
-              Edit Note
-            </button>
-          </div>
-
-          {/* The Audit Trail */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-5 flex items-center gap-2">
               <History className="w-4 h-4" /> Audit Trail
             </h3>
             <div className="relative border-l-2 border-slate-100 ml-3 space-y-6">
-              {mockOrder.timeline.map((log, index) => (
+              {order.timeline.map((log: any, index: number) => (
                 <div key={index} className="relative pl-5">
-                  {/* Timeline Node Dot */}
                   <div className={`absolute -left-[9px] top-1 w-4 h-4 rounded-full border-2 border-white shadow-sm ${
                     log.type === "payment" ? "bg-emerald-500" : log.type === "status" ? "bg-blue-500" : "bg-slate-300"
                   }`} />
@@ -230,8 +370,36 @@ export default function OrderDetailsLedger() {
             </div>
           </div>
 
+          {order.status !== "CANCELLED" && (
+            <div className="bg-white p-5 rounded-2xl border border-rose-200 shadow-sm">
+              <h3 className="text-xs font-bold text-rose-600 uppercase tracking-wider mb-2 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" /> Danger Zone
+              </h3>
+              <p className="text-xs text-slate-500 mb-4">Cancelling this order will return items to inventory. Refunds must be processed manually.</p>
+              <button 
+                onClick={handleCancelOrder}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-sm font-bold hover:bg-rose-100 transition-colors"
+              >
+                <XCircle className="w-4 h-4" /> Cancel Order
+              </button>
+            </div>
+          )}
+
         </div>
       </div>
+
+      {/* 🟢 RENDER THE RECORD PAYMENT MODAL */}
+      <RecordPaymentModal 
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        orderId={order.id}
+        pendingAmount={order.financials.balance}
+        onSuccess={() => {
+          setIsPaymentModalOpen(false);
+          refreshOrder(); // Refresh the page to show the new payment!
+        }}
+      />
+
     </div>
   );
 }
