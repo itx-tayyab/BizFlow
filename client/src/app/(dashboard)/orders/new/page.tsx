@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation"; // 🟢 ADDED useSearchParams
+import { useRouter, useSearchParams } from "next/navigation"; 
 import {
   ArrowLeft, Search, Plus, Minus, Trash2,
   Tag, CheckCircle2, Wallet, Receipt, Barcode,
@@ -22,7 +22,7 @@ type CartItem = Product & { qty: number };
 
 export default function CreateOrderPOS() {
   const router = useRouter();
-  const searchParams = useSearchParams(); // 🟢 TO READ ?customerId= FROM URL
+  const searchParams = useSearchParams(); 
 
   // 1. API STATES
   const [products, setProducts] = useState<Product[]>([]);
@@ -33,7 +33,7 @@ export default function CreateOrderPOS() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerMode, setCustomerMode] = useState<"walk-in" | "existing">("walk-in");
   
-  // 🟢 3. NEW CUSTOMER SEARCH STATES
+  // 3. NEW CUSTOMER SEARCH STATES
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerResults, setCustomerResults] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
@@ -127,13 +127,13 @@ export default function CreateOrderPOS() {
       } finally {
         setIsSearchingCustomer(false);
       }
-    }, 300); // 300ms debounce to save backend load
+    }, 300); 
 
     return () => clearTimeout(delayDebounceFn);
   }, [customerSearch]);
 
   // ==========================================
-  // 🟢 AUTO-LOAD CUSTOMER FROM URL (?customerId=123)
+  // 🟢 AUTO-LOAD CUSTOMER FROM URL
   // ==========================================
   useEffect(() => {
     const urlCustomerId = searchParams.get("customerId");
@@ -161,7 +161,6 @@ export default function CreateOrderPOS() {
       const token = localStorage.getItem("accessToken");
 
       const payload = {
-        // 🟢 Pass the ID of the selected customer!
         customerId: customerMode === "walk-in" ? null : selectedCustomer?.id,
         items: cart.map(item => ({
           productId: item.id,
@@ -218,7 +217,6 @@ export default function CreateOrderPOS() {
 
   const removeItem = (id: string) => setCart((prev) => prev.filter((item) => item.id !== id));
 
-  // Math
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const grandTotal = subtotal - (Number(discount) || 0);
   const pendingAmount = grandTotal - (Number(amountPaid) || 0);
@@ -283,11 +281,25 @@ export default function CreateOrderPOS() {
 
           <div className="p-4 border-b border-slate-100 bg-slate-50 shrink-0">
             <div className="flex bg-white rounded-lg p-1 border border-slate-200 shadow-sm">
-              <button onClick={() => { setCustomerMode("walk-in"); setSelectedCustomer(null); }} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${customerMode === "walk-in" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:bg-slate-100"}`}>Walk-in Customer</button>
-              <button onClick={() => setCustomerMode("existing")} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${customerMode === "existing" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:bg-slate-100"}`}>Existing / Search</button>
+              <button 
+                onClick={() => { 
+                  setCustomerMode("walk-in"); 
+                  setSelectedCustomer(null); 
+                  setOrderStatus("COMPLETED"); // 🟢 FIX: Force status back to Completed
+                }} 
+                className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${customerMode === "walk-in" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:bg-slate-100"}`}
+              >
+                Walk-in Customer
+              </button>
+              <button 
+                onClick={() => setCustomerMode("existing")} 
+                className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${customerMode === "existing" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:bg-slate-100"}`}
+              >
+                Existing / Search
+              </button>
             </div>
 
-            {/* 🟢 REAL CUSTOMER SEARCH UI */}
+            {/* REAL CUSTOMER SEARCH UI */}
             {customerMode === "existing" && (
               <div className="mt-3 relative">
                 {!selectedCustomer ? (
@@ -301,7 +313,6 @@ export default function CreateOrderPOS() {
                       className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm transition-all" 
                     />
 
-                    {/* Auto-Complete Dropdown */}
                     {customerSearch.length >= 2 && (
                       <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
                         {isSearchingCustomer ? (
@@ -330,7 +341,6 @@ export default function CreateOrderPOS() {
                     )}
                   </>
                 ) : (
-                  /* 🟢 SELECTED CUSTOMER BADGE */
                   <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg shadow-sm">
                     <div>
                       <p className="text-sm font-bold text-blue-900">{selectedCustomer.name}</p>
@@ -351,7 +361,7 @@ export default function CreateOrderPOS() {
             {customerMode === "walk-in" && pendingAmount > 0 && cart.length > 0 && (
               <div className="mt-3 text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-100 p-2 rounded-lg flex items-start gap-1.5">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                Walk-in customers cannot take Udhaar. Please select a customer profile.
+                Walk-in customers must pay in full.
               </div>
             )}
           </div>
@@ -398,34 +408,72 @@ export default function CreateOrderPOS() {
 
             <hr className="border-slate-200" />
 
-            <div className="flex items-start gap-3">
-              <div className="flex-1">
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
-                  Amount Received
-                  {pendingAmount > 0 && cart.length > 0 && (
-                    <button onClick={() => setAmountPaid(grandTotal.toString())} className="text-blue-600 hover:underline text-[10px]">Pay in Full</button>
-                  )}
-                </label>
-                <div className="relative">
-                  <Wallet className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                  <input type="number" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} placeholder="0" className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" />
+            <div className="flex flex-col gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                    Amount Received
+                    {pendingAmount > 0 && cart.length > 0 && (
+                      <button onClick={() => setAmountPaid(grandTotal.toString())} className="text-blue-600 hover:underline text-[10px]">Pay in Full</button>
+                    )}
+                  </label>
+                  <div className="relative">
+                    <Wallet className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <input 
+                      type="number" 
+                      value={amountPaid} 
+                      onChange={(e) => setAmountPaid(e.target.value)} 
+                      placeholder="0" 
+                      className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none" 
+                    />
+                  </div>
+                </div>
+
+                <div className="w-1/3">
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Method</label>
+                  <select 
+                    value={paymentMethod} 
+                    onChange={(e) => setPaymentMethod(e.target.value)} 
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white cursor-pointer"
+                  >
+                    <option value="CASH">Cash</option>
+                    <option value="BANK">Bank</option>
+                  </select>
                 </div>
               </div>
-              <div className="w-1/3">
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">Method</label>
-                <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white cursor-pointer">
-                  <option value="CASH">Cash</option>
-                  <option value="BANK">Bank</option>
-                </select>
-              </div>
+
+              {/* 🟢 NEW: CONDITIONAL ORDER STATUS DROPDOWN */}
+              {customerMode === "existing" && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Order Status</label>
+                  <div className="relative">
+                    <select 
+                      value={orderStatus}
+                      onChange={(e) => setOrderStatus(e.target.value)}
+                      className={`w-full pl-3 pr-8 py-2 border rounded-lg text-sm font-bold focus:ring-2 outline-none appearance-none cursor-pointer transition-colors ${
+                        orderStatus === 'COMPLETED' 
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-700 focus:ring-emerald-500' 
+                          : 'bg-blue-50 border-blue-200 text-blue-700 focus:ring-blue-500'
+                      }`}
+                    >
+                      <option value="COMPLETED">Completed (Handed to customer)</option>
+                      <option value="PENDING">Pending (Delivery / Pickup later)</option>
+                    </select>
+                    <ChevronDown className={`w-4 h-4 absolute right-2.5 top-2.5 pointer-events-none ${orderStatus === 'COMPLETED' ? 'text-emerald-500' : 'text-blue-500'}`} />
+                  </div>
+                </div>
+              )}
             </div>
 
             <button
               onClick={handleCompleteOrder}
               disabled={cart.length === 0 || (customerMode === "walk-in" && pendingAmount > 0) || isSubmitting}
-              className="w-full py-4 mt-2 bg-blue-600 text-white rounded-xl font-bold text-base hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
+              className="w-full py-4 mt-2 bg-slate-900 text-white rounded-xl font-bold text-base hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
             >
-              {isSubmitting ? "Processing..." : "Complete Order"}
+              {isSubmitting 
+                ? "Processing..." 
+                : orderStatus === "COMPLETED" ? "Complete Order" : "Save Pending Order"
+              }
               {!isSubmitting && <CheckCircle2 className="w-5 h-5" />}
             </button>
           </div>
