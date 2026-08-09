@@ -1,57 +1,135 @@
-import { Link as LinkIcon } from "lucide-react";
+"use client";
 
-export default function PortalTab({ business }: { business: any }) {
+import { useState, useRef } from "react";
+import { User, CheckCircle2, Loader2, UploadCloud, AlertCircle } from "lucide-react";
+
+export default function ProfileTab({ user }: { user: any }) {
+  const [name, setName] = useState(user.name || "");
+  const [phone, setPhone] = useState(user.phone || "");
+  const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl || "");
+  
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 🟢 AUTO-SAVE TEXT FIELDS (Runs onBlur)
+  const handleAutoSave = async (field: string, value: string) => {
+    if (value === user[field]) return; // Don't save if nothing changed
+    setSaveStatus("saving");
+
+    try {
+      const res = await fetch("http://localhost:5000/settings/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("accessToken")}`
+        },
+        body: JSON.stringify({ [field]: value }),
+      });
+
+      if (!res.ok) throw new Error("Failed to save");
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 2000);
+    } catch (error) {
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    }
+  };
+
+  // 🟢 UPLOAD AVATAR TO CLOUDINARY
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setSaveStatus("saving");
+
+    const formData = new FormData();
+    formData.append("avatar", file); // Must match upload.single('avatar') in backend!
+
+    try {
+      const res = await fetch("http://localhost:5000/settings/profile", {
+        method: "PUT",
+        headers: { "Authorization": `Bearer ${localStorage.getItem("accessToken")}` },
+        body: formData, // No content-type needed for FormData
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error("Upload failed");
+
+      setAvatarUrl(data.profile.avatarUrl); // Instantly update UI
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 2000);
+    } catch (error) {
+      setSaveStatus("error");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-6">
-      <div>
-        <h2 className="text-base font-semibold text-slate-900">Customer Portal</h2>
-        <p className="text-sm text-slate-500">Control your public-facing catalog and digital invoice links.</p>
-      </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden p-6 space-y-8">
-        <div>
-          <label className="block text-sm font-medium text-slate-900 mb-1.5">Your Unique Shop Link</label>
-          <p className="text-sm text-slate-500 mb-3">Share this link with customers so they can view your products and their receipts.</p>
-          
-          <div className="flex rounded-lg shadow-sm border border-slate-300 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
-            <span className="inline-flex items-center px-3 bg-slate-50 text-slate-500 text-sm border-r border-slate-300 font-medium">
-              bizflow.com/p/
-            </span>
-            <input type="text" defaultValue={business.slug} className="flex-1 block w-full py-2 px-3 outline-none text-slate-900 font-medium text-sm" />
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-8">
+      <section>
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Personal Information</h2>
+            <p className="text-sm text-slate-500">Update your personal details.</p>
           </div>
-          <div className="mt-3 flex items-center gap-2">
-            <button className="flex items-center gap-1.5 text-sm text-blue-600 font-medium hover:underline">
-              <LinkIcon className="w-4 h-4" /> Copy public link
-            </button>
+          
+          {/* 🟢 STATUS INDICATOR */}
+          <div className="h-6">
+            {saveStatus === "saving" && <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...</span>}
+            {saveStatus === "saved" && <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600"><CheckCircle2 className="w-3.5 h-3.5" /> Saved</span>}
+            {saveStatus === "error" && <span className="flex items-center gap-1.5 text-xs font-semibold text-rose-600"><AlertCircle className="w-3.5 h-3.5" /> Error saving</span>}
           </div>
         </div>
-
-        <hr className="border-slate-100" />
-
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-slate-900">Portal Features</h3>
+        
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col sm:flex-row gap-8 items-start">
           
-          <div className="flex items-center justify-between p-4 border border-slate-200 rounded-lg bg-slate-50">
-            <div>
-              <p className="font-medium text-slate-900 text-sm">Public Catalog</p>
-              <p className="text-xs text-slate-500">Allow customers to see your inventory online.</p>
+          {/* AVATAR UPLOADER */}
+          <div className="flex flex-col items-center gap-3">
+            <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageUpload} />
+            <div 
+              onClick={() => fileInputRef.current?.click()} 
+              className="w-20 h-20 rounded-full bg-slate-50 border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:border-blue-400 hover:text-blue-500 transition-colors cursor-pointer group relative overflow-hidden"
+            >
+              {isUploading ? (
+                <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+              ) : avatarUrl ? (
+                <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                <User className="w-6 h-6 group-hover:scale-110 transition-transform" />
+              )}
             </div>
-            <div className="w-10 h-5 bg-blue-600 rounded-full p-0.5 cursor-pointer flex items-center justify-end">
-              <div className="w-4 h-4 bg-white rounded-full shadow-sm"></div>
-            </div>
+            <span className="text-xs font-medium text-slate-500">{isUploading ? "Uploading..." : "Change Avatar"}</span>
           </div>
 
-          <div className="flex items-center justify-between p-4 border border-slate-200 rounded-lg bg-slate-50">
-            <div>
-              <p className="font-medium text-slate-900 text-sm">Self-Service Ordering</p>
-              <p className="text-xs text-slate-500">Allow customers to place orders directly from the link.</p>
+          <div className="flex-1 w-full space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Full Name</label>
+                <input 
+                  type="text" value={name} onChange={(e) => setName(e.target.value)}
+                  onBlur={(e) => handleAutoSave("name", e.target.value)} 
+                  className="w-full border border-slate-300 rounded-lg py-2 px-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm text-sm" 
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Personal Phone</label>
+                <input 
+                  type="text" value={phone} onChange={(e) => setPhone(e.target.value)}
+                  onBlur={(e) => handleAutoSave("phone", e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg py-2 px-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm text-sm" 
+                />
+              </div>
             </div>
-            <div className="w-10 h-5 bg-slate-200 rounded-full p-0.5 cursor-pointer flex items-center justify-start">
-              <div className="w-4 h-4 bg-white rounded-full shadow-sm"></div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Login Email</label>
+              <input type="email" defaultValue={user.email} disabled className="w-full border border-slate-200 rounded-lg py-2 px-3 outline-none text-sm bg-slate-100 text-slate-500 cursor-not-allowed" />
             </div>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
