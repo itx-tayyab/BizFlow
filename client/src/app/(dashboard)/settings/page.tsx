@@ -1,47 +1,85 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import SettingsNav from "@/components/settings/SettingsNav";
 import ProfileTab from "@/components/settings/ProfileTab";
 import GeneralTab from "@/components/settings/GeneralTab";
 import TeamTab from "@/components/settings/TeamTab";
 import PortalTab from "@/components/settings/PortalTab";
 import NotificationsTab from "@/components/settings/NotificationsTab";
-import FloatingSaveBar from "@/components/settings/FloatingSaveBar";
+import { Loader2, AlertCircle } from "lucide-react";
 
-// --- MOCK RBAC ROLE ---
-const currentUserRole: "OWNER" | "STAFF" = "OWNER";
-
-// --- MOCK DATA ---
-const mockUser = {
-  name: "Ali Khan",
-  personalPhone: "0321 9876543",
-  email: "ali@alfatah.pk",
-};
-
-const mockBusiness = {
-  name: "Al-Fatah Electronics",
-  phone: "0300 1234567", // Notice business phone is different!
-  email: "support@alfatah.pk",
-  address: "Main Boulevard, DHA Phase 6, Lahore",
-  currency: "PKR",
-  slug: "al-fatah",
-};
-
-const mockTeam = [ /* same as before */ ];
+const API_BASE_URL = "http://localhost:5000/settings";
 
 export default function SettingsPage() {
-  // If OWNER, default to general. If STAFF, default to profile.
-  const [activeTab, setActiveTab] = useState(currentUserRole === "OWNER" ? "general" : "profile");
-  const [isSaving, setIsSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState("profile");
+  
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [businessData, setBusinessData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const handleSave = () => {
-    setIsSaving(true);
-    setTimeout(() => setIsSaving(false), 1000);
+  const updateUserProfile = (updates: any) => {
+    setUserProfile((prev: any) => (prev ? { ...prev, ...updates } : prev));
   };
 
+  const updateBusinessData = (updates: any) => {
+    setBusinessData((prev: any) => (prev ? { ...prev, ...updates } : prev));
+  };
+
+  // 🟢 FETCH DATA ON MOUNT
+  useEffect(() => {
+    const fetchSettingsData = async () => {
+      try {
+        const token = localStorage.getItem("accessToken");
+        const headers = { 
+          "Content-Type": "application/json", 
+          "Authorization": `Bearer ${token}` 
+        };
+
+        // Fetch Profile & Business simultaneously for speed
+        const [profileRes, businessRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/profileinfo`, { headers }),
+          fetch(`${API_BASE_URL}/businessinfo`, { headers })
+        ]);
+
+        const profileData = await profileRes.json();
+        const businessJson = await businessRes.json();
+
+        if (profileData.success) setUserProfile(profileData.profile);
+        if (businessJson.success) setBusinessData(businessJson.business);
+        
+        // If owner, default to general tab. If staff, default to profile.
+        if (profileData.profile?.role === "OWNER") setActiveTab("general");
+
+      } catch (err: any) {
+        setError("Failed to load settings data.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchSettingsData();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
+  if (error || !userProfile) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px] text-rose-600 font-bold gap-2">
+        <AlertCircle className="w-5 h-5" /> {error}
+      </div>
+    );
+  }
+
   return (
-    <div className="flex w-full flex-col animate-in fade-in duration-500 pb-24 mt-2 max-w-4xl mx-auto">
+    <div className="flex w-full flex-col animate-in fade-in duration-500 pb-24 mt-2">
       
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -49,26 +87,26 @@ export default function SettingsPage() {
           <p className="text-sm text-slate-500 mt-1">Manage your profile, preferences, and workspace.</p>
         </div>
         
-        {/* Role Badge Indicator */}
         <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-lg border border-slate-200">
           <span className="text-xs text-slate-500 font-medium">Role:</span>
-          <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${currentUserRole === 'OWNER' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-700'}`}>
-            {currentUserRole}
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${userProfile.role === 'OWNER' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-700'}`}>
+            {userProfile.role}
           </span>
         </div>
       </div>
 
-      <SettingsNav activeTab={activeTab} setActiveTab={setActiveTab} role={currentUserRole} />
+      <SettingsNav activeTab={activeTab} setActiveTab={setActiveTab} role={userProfile.role} />
 
       <div className="w-full flex flex-col gap-8">
-        {activeTab === "profile" && <ProfileTab user={mockUser} />}
-        {activeTab === "general" && currentUserRole === "OWNER" && <GeneralTab business={mockBusiness} />}
-        {activeTab === "team" && currentUserRole === "OWNER" && <TeamTab team={mockTeam} />}
-        {activeTab === "portal" && currentUserRole === "OWNER" && <PortalTab business={mockBusiness} />}
+        {activeTab === "profile" && <ProfileTab user={userProfile} onProfileUpdate={updateUserProfile} />}
+        
+        {/* Only render Business/Team tabs if they are the OWNER */}
+        {activeTab === "general" && userProfile.role === "OWNER" && <GeneralTab business={businessData} onBusinessUpdate={updateBusinessData} />}
+        {activeTab === "team" && userProfile.role === "OWNER" && <TeamTab />}
+        {activeTab === "portal" && userProfile.role === "OWNER" && <PortalTab user={userProfile} />}
+        
         {activeTab === "notifications" && <NotificationsTab />}
       </div>
-
-      <FloatingSaveBar isSaving={isSaving} handleSave={handleSave} />
     </div>
   );
 }
