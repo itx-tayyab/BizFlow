@@ -1,12 +1,63 @@
-import { Star } from "lucide-react";
+"use client";
 
-const vipCustomers = [
-  { name: "Fatima Store", type: "B2B Wholesale", spent: 1250000, orders: 24 },
-  { name: "Zain Ahmed", type: "Retail", spent: 450000, orders: 12 },
-  { name: "Ayesha Khan", type: "Retail", spent: 110000, orders: 8 },
-];
+import { useEffect, useState } from "react";
+import { Star, Loader2 } from "lucide-react";
+
+const API_BASE_URL = "http://localhost:5000/reports";
 
 export default function CustomerInsightsTab() {
+  const [vipCustomers, setVipCustomers] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let isActive = true;
+
+    const fetchCustomerInsights = async () => {
+      setIsLoading(true);
+      setError("");
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/customers`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+          },
+        });
+
+        const json = await res.json();
+        if (!res.ok || !json?.success) throw new Error(json?.message || "Failed to load customer report");
+
+        if (isActive) setVipCustomers(json.vipCustomers || []);
+      } catch {
+        if (isActive) setError("Could not load customer insights.");
+      } finally {
+        if (isActive) setIsLoading(false);
+      }
+    };
+
+    fetchCustomerInsights();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500 shadow-sm">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading customer insights...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-sm font-medium text-rose-600 shadow-sm">
+        {error}
+      </div>
+    );
+  }
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-6">
       
@@ -30,12 +81,12 @@ export default function CustomerInsightsTab() {
             <tbody className="divide-y divide-slate-100">
               {vipCustomers.map((c, i) => (
                 <tr key={i} className="hover:bg-slate-50">
-                  <td className="px-6 py-4 font-bold text-slate-900">{c.name}</td>
+                  <td className="px-6 py-4 font-bold text-slate-900">{c.name || "Customer"}</td>
                   <td className="px-6 py-4">
-                    <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-semibold">{c.type}</span>
+                    <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-semibold">{c.type || "Retail"}</span>
                   </td>
-                  <td className="px-6 py-4 text-slate-600">{c.orders}</td>
-                  <td className="px-6 py-4 font-bold text-emerald-600">Rs. {c.spent.toLocaleString()}</td>
+                  <td className="px-6 py-4 text-slate-600">{c.orders ?? 0}</td>
+                  <td className="px-6 py-4 font-bold text-emerald-600">Rs. {Number(c.spent || 0).toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>
