@@ -10,12 +10,21 @@ import InventoryInsightsTab from "@/components/reports/InventoryInsightsTab";
 import StaffPerformanceTab from "@/components/reports/StaffPerformanceTab";
 import CustomerInsightsTab from "@/components/reports/CustomerInsightsTab";
 
+const dateRangeToDays: Record<string, number> = {
+  today: 1,
+  "last-7-days": 7,
+  "this-month": 30,
+  "last-month": 60,
+  ytd: 365,
+};
+
 export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState("overview");
   const [dateRange, setDateRange] = useState("last-7-days");
+  const daysValue = dateRangeToDays[dateRange] ?? 7;
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in duration-500 pb-20 mt-2 max-w-6xl mx-auto">
+    <div className="flex flex-col gap-6 animate-in fade-in duration-500 pb-20 mt-2">
       
       {/* 🟢 HEADER & EXPORT ACTIONS */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -53,7 +62,7 @@ export default function ReportsPage() {
 
       {/* 🟢 DYNAMIC CONTENT */}
       <div className="w-full">
-        {activeTab === "overview" && <FinancialOverviewTab />}
+        {activeTab === "overview" && <FinancialOverviewTab days={daysValue} />}
         {activeTab === "inventory" && <InventoryInsightsTab />}
         {activeTab === "staff" && <StaffPerformanceTab />}
         {activeTab === "customers" && <CustomerInsightsTab />}
