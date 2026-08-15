@@ -5,17 +5,13 @@ import {
 } from 'recharts';
 import { TrendingUp } from "lucide-react";
 
-const data = [
-  { name: 'Mon', revenue: 24000 },
-  { name: 'Tue', revenue: 13980 },
-  { name: 'Wed', revenue: 98000 },
-  { name: 'Thu', revenue: 39080 },
-  { name: 'Fri', revenue: 48000 },
-  { name: 'Sat', revenue: 38000 },
-  { name: 'Sun', revenue: 43000 },
-];
+type RevenueChartProps = {
+  chartData?: Array<{ name?: string; revenue?: number }>;
+};
 
-export default function RevenueChart() {
+export default function RevenueChart({ chartData = [] }: RevenueChartProps) {
+  const data = chartData.length ? chartData : [{ name: 'No data', revenue: 0 }];
+
   return (
     <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col h-full">
       <div className="flex justify-between items-start mb-6">
@@ -42,7 +38,7 @@ export default function RevenueChart() {
             <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} tickFormatter={(value) => `Rs.${value/1000}k`} />
             <Tooltip 
               contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-              formatter={(value) => value !== undefined ? `Rs. ${(value as number).toLocaleString()}` : ''}
+              formatter={(value) => value !== undefined ? `Rs. ${Number(value || 0).toLocaleString()}` : ''}
             />
             <Area type="monotone" dataKey="revenue" stroke="#2563eb" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
           </AreaChart>
