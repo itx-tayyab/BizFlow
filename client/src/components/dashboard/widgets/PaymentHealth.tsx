@@ -3,13 +3,17 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Wallet } from "lucide-react";
 
-const data = [
-  { name: 'Paid Securely', value: 345000, color: '#10b981' }, // Emerald
-  { name: 'Pending (Unpaid)', value: 85000, color: '#f43f5e' }, // Rose
-  { name: 'Partial Advances', value: 45000, color: '#f59e0b' }, // Amber
-];
+type PaymentHealthProps = {
+  paymentHealth?: Array<{ name?: string; value?: number; color?: string }>;
+};
 
-export default function PaymentHealth() {
+export default function PaymentHealth({ paymentHealth = [] }: PaymentHealthProps) {
+  const data = paymentHealth.length ? paymentHealth : [
+    { name: 'Paid', value: 0, color: '#10b981' },
+    { name: 'Pending/Udhaar', value: 0, color: '#f43f5e' },
+  ];
+  const totalVolume = data.reduce((sum, item) => sum + Number(item.value || 0), 0);
+
   return (
     <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col h-full">
       <div className="flex items-center gap-2 mb-2">
@@ -32,7 +36,7 @@ export default function PaymentHealth() {
               stroke="none"
             >
               {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} />
+                <Cell key={`cell-${index}`} fill={entry.color || '#10b981'} />
               ))}
             </Pie>
             <Tooltip 
@@ -41,10 +45,9 @@ export default function PaymentHealth() {
             />
           </PieChart>
         </ResponsiveContainer>
-        {/* Center Text */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <span className="text-xs text-slate-400 font-medium">Total Volume</span>
-          <span className="text-lg font-bold text-slate-900">475k</span>
+          <span className="text-lg font-bold text-slate-900">Rs. {totalVolume.toLocaleString()}</span>
         </div>
       </div>
 
@@ -52,10 +55,10 @@ export default function PaymentHealth() {
         {data.map((item, idx) => (
           <div key={idx} className="flex justify-between items-center text-sm">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-              <span className="text-slate-600 font-medium">{item.name}</span>
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color || '#10b981' }}></div>
+              <span className="text-slate-600 font-medium">{item.name || "Payment"}</span>
             </div>
-            <span className="font-bold text-slate-900">Rs. {item.value.toLocaleString()}</span>
+            <span className="font-bold text-slate-900">Rs. {Number(item.value || 0).toLocaleString()}</span>
           </div>
         ))}
       </div>
