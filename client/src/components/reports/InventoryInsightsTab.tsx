@@ -1,17 +1,67 @@
-import { AlertTriangle } from "lucide-react";
+"use client";
 
-const topProducts = [
-  { name: "Samsung Galaxy S23", sold: 14, revenue: 2940000, stock: 12 },
-  { name: "AirPods Pro (2nd Gen)", sold: 28, revenue: 1820000, stock: 3 },
-  { name: "iPhone 15 Clear Case", sold: 45, revenue: 112500, stock: 45 },
-];
+import { useEffect, useState } from "react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 
-const deadStock = [
-  { name: "Wired Earphones (MicroUSB)", daysUnsold: 45, stock: 30, tiedValue: 15000 },
-  { name: "iPhone 11 Battery Case", daysUnsold: 60, stock: 15, tiedValue: 22500 },
-];
+const API_BASE_URL = "http://localhost:5000/reports";
 
 export default function InventoryInsightsTab() {
+  const [topProducts, setTopProducts] = useState<any[]>([]);
+  const [deadStock, setDeadStock] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let isActive = true;
+
+    const fetchInventoryInsights = async () => {
+      setIsLoading(true);
+      setError("");
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/inventory`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+          },
+        });
+
+        const json = await res.json();
+        if (!res.ok || !json?.success) throw new Error(json?.message || "Failed to load inventory report");
+
+        if (isActive) {
+          setTopProducts(json.topProducts || []);
+          setDeadStock(json.deadStock || []);
+        }
+      } catch (err: any) {
+        if (isActive) setError(err?.message || "Could not load inventory insights.");
+      } finally {
+        if (isActive) setIsLoading(false);
+      }
+    };
+
+    fetchInventoryInsights();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500 shadow-sm">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading inventory insights...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-sm font-medium text-rose-600 shadow-sm">
+        {error}
+      </div>
+    );
+  }
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -34,9 +84,9 @@ export default function InventoryInsightsTab() {
               <tbody className="divide-y divide-slate-100">
                 {topProducts.map((p, i) => (
                   <tr key={i} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 font-semibold text-slate-900">{p.name}</td>
-                    <td className="px-6 py-4 text-slate-600">{p.sold}</td>
-                    <td className="px-6 py-4 font-bold text-emerald-600">Rs. {(p.revenue/1000).toFixed(0)}k</td>
+                    <td className="px-6 py-4 font-semibold text-slate-900">{p.name || "Product"}</td>
+                    <td className="px-6 py-4 text-slate-600">{p.sold ?? 0}</td>
+                    <td className="px-6 py-4 font-bold text-emerald-600">Rs. {Number(p.revenue || 0).toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -67,11 +117,11 @@ export default function InventoryInsightsTab() {
                 {deadStock.map((p, i) => (
                   <tr key={i} className="hover:bg-slate-50">
                     <td className="px-6 py-4">
-                      <p className="font-semibold text-slate-900">{p.name}</p>
-                      <p className="text-xs text-rose-500">{p.daysUnsold} days unsold</p>
+                      <p className="font-semibold text-slate-900">{p.name || "Product"}</p>
+                      <p className="text-xs text-rose-500">{p.daysUnsold ?? 0} days unsold</p>
                     </td>
-                    <td className="px-6 py-4 text-slate-600">{p.stock} units</td>
-                    <td className="px-6 py-4 font-bold text-rose-600">Rs. {p.tiedValue.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-slate-600">{p.stock ?? 0} units</td>
+                    <td className="px-6 py-4 font-bold text-rose-600">Rs. {Number(p.tiedValue || 0).toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
