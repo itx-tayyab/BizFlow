@@ -1,12 +1,64 @@
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+"use client";
 
-const staffPerformance = [
-  { name: 'Ali (Owner)', orders: 45, revenue: 520000, avg: 11555 },
-  { name: 'Waqas (Staff)', orders: 112, revenue: 310000, avg: 2767 },
-  { name: 'Zain (Staff)', orders: 85, revenue: 180000, avg: 2117 },
-];
+import { useEffect, useState } from "react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { Loader2 } from "lucide-react";
+
+const API_BASE_URL = "http://localhost:5000/reports";
 
 export default function StaffPerformanceTab() {
+  const [staffPerformance, setStaffPerformance] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let isActive = true;
+
+    const fetchStaffPerformance = async () => {
+      setIsLoading(true);
+      setError("");
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/staff`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+          },
+        });
+
+        const json = await res.json();
+        if (!res.ok || !json?.success) throw new Error(json?.message || "Failed to load staff report");
+
+        if (isActive) setStaffPerformance(json.staffPerformance || []);
+      } catch {
+        if (isActive) setError("Could not load staff performance.");
+      } finally {
+        if (isActive) setIsLoading(false);
+      }
+    };
+
+    fetchStaffPerformance();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500 shadow-sm">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading staff performance...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-sm font-medium text-rose-600 shadow-sm">
+        {error}
+      </div>
+    );
+  }
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-6">
       
