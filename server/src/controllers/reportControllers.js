@@ -100,55 +100,90 @@ export const getFinancialOverview = async (req, res) => {
 export const getInventoryInsights = async (req, res) => {
     try {
         const userId = req.user?.id;
-        const currentUser = await prisma.user.findUnique({ where: { id: userId }, select: { businessId: true } });
+        if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+        const currentUser = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { businessId: true }
+        });
+
+        if (!currentUser?.businessId) {
+            return res.status(400).json({ message: "No workspace found." });
+        }
+
         const businessId = currentUser.businessId;
 
         const cacheKey = `reports:inventory:${businessId}`;
         const cachedData = await redisClient.get(cacheKey);
         if (cachedData) return res.status(200).json(JSON.parse(cachedData));
 
-        const topSelling = await prisma.orderItem.groupBy({
-            by: ['productId'],
-            _sum: { quantity: true, price: true },
-            where: { order: { businessId, status: { not: "CANCELLED" } } },
-            orderBy: { _sum: { quantity: 'desc' } },
-            take: 5
-        });
+        let topProducts = [];
 
-        const topProducts = [];
-        for (const item of topSelling) {
-            const prod = await prisma.product.findUnique({ where: { id: item.productId }, select: { name: true, stock: true }});
-            if (prod) {
-                topProducts.push({
-                    name: prod.name,
-                    sold: item._sum.quantity,
-                    revenue: item._sum.price, 
-                    stock: prod.stock
+        try {
+            const topSelling = await prisma.orderItem.groupBy({
+                by: ['productId'],
+                _sum: { quantity: true, price: true },
+                where: { order: { businessId, status: { not: "CANCELLED" } } },
+                orderBy: { _sum: { quantity: 'desc' } },
+                take: 5
+            });
+
+            for (const item of topSelling) {
+                if (!item.productId) continue;
+
+                const prod = await prisma.product.findUnique({
+                    where: { id: item.productId },
+                    select: { name: true, stock: true, price: true }
                 });
+
+                if (prod) {
+                    topProducts.push({
+                        name: prod.name,
+                        sold: item._sum.quantity || 0,
+                        revenue: item._sum.price || 0,
+                        stock: prod.stock || 0
+                    });
+                }
             }
+        } catch (groupError) {
+            console.warn("Inventory top products query failed:", groupError);
+            topProducts = [];
         }
 
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        let deadStock = [];
 
-        const activeProductIds = await prisma.orderItem.findMany({
-            where: { order: { businessId, createdAt: { gte: thirtyDaysAgo } } },
-            select: { productId: true },
-            distinct: ['productId']
-        });
-        const activeIdsArray = activeProductIds.map(a => a.productId);
+        try {
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        const deadStockItems = await prisma.product.findMany({
-            where: { businessId, stock: { gt: 0 }, isArchived: false, id: { notIn: activeIdsArray } },
-            take: 5
-        });
+            const activeProductIds = await prisma.orderItem.findMany({
+                where: { order: { businessId, createdAt: { gte: thirtyDaysAgo } } },
+                select: { productId: true },
+                distinct: ['productId']
+            });
 
-        const deadStock = deadStockItems.map(p => ({
-            name: p.name,
-            daysUnsold: 30,
-            stock: p.stock,
-            tiedValue: p.stock * (p.costPrice || p.price)
-        }));
+            const activeIdsArray = activeProductIds.map(a => a.productId).filter(Boolean);
+
+            const deadStockItems = await prisma.product.findMany({
+                where: {
+                    businessId,
+                    stock: { gt: 0 },
+                    id: { notIn: activeIdsArray.length ? activeIdsArray : ['__none__'] }
+                },
+                select: { name: true, stock: true, costPrice: true, price: true },
+                take: 5
+            });
+
+            deadStock = deadStockItems.map(p => ({
+                name: p.name,
+                daysUnsold: 30,
+                stock: p.stock || 0,
+                tiedValue: (p.stock || 0) * (p.costPrice || p.price || 0)
+            }));
+        } catch (stockError) {
+            console.warn("Inventory dead stock query failed:", stockError);
+            deadStock = [];
+        }
 
         const responseData = { success: true, topProducts, deadStock };
         await redisClient.setEx(cacheKey, CACHE_TTL, JSON.stringify(responseData));
@@ -156,7 +191,7 @@ export const getInventoryInsights = async (req, res) => {
 
     } catch (error) {
         console.error("Inventory Report Error:", error);
-        return res.status(500).json({ message: "Server error" });
+        return res.status(500).json({ message: error.message || "Server error" });
     }
 };
 
