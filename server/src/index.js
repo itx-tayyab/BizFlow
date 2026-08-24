@@ -10,6 +10,7 @@ import customerRoutes from './routes/customerRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import settingRoutes from './routes/settingRoutes.js';
 import reportRoutes from './routes/reportRoutes.js';
+import dashboardRoutes from './routes/dashboardRoutes.js';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -36,6 +37,7 @@ app.use("/customer", customerRoutes);
 app.use("/order", orderRoutes);
 app.use("/settings", settingRoutes);
 app.use("/reports", reportRoutes);
+app.use("/dashboard", dashboardRoutes);
 
 // Server running
 app.listen(PORT, async () => {
