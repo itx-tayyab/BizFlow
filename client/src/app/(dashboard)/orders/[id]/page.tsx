@@ -229,12 +229,23 @@ export default function OrderDetailsLedger() {
 
           {order.status !== "CANCELLED" && (
             <>
-              <button className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors bg-white shadow-sm">
-                <Printer className="w-4 h-4" /> Print
-              </button>
-              <a href={`https://wa.me/${order.customer.phone}?text=${waMessage}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 bg-[#25D366] text-white rounded-xl text-sm font-medium hover:bg-[#20bd5a] transition-colors shadow-sm">
-                <MessageCircle className="w-4 h-4" /> Send Invoice
-              </a>
+              <Link 
+            href={`/invoice/${order.id}`} // 🟢 Links to our new Digital Receipt page!
+            target="_blank"
+            className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors bg-white shadow-sm"
+          >
+            <Printer className="w-4 h-4" /> Print
+          </Link>
+              <a 
+            href={`https://wa.me/${order.customer.phone}?text=${encodeURIComponent(
+              `Hello ${order.customer.name}, your invoice ${order.orderNumber} is ready. Total: Rs. ${order.financials.total.toLocaleString()}. View your digital receipt here: http://localhost:3000/invoice/${order.id}`
+            )}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-4 py-2 bg-[#25D366] text-white rounded-xl text-sm font-medium hover:bg-[#20bd5a] transition-colors shadow-sm"
+          >
+            <MessageCircle className="w-4 h-4" /> Send Invoice
+          </a>
             </>
           )}
         </div>
