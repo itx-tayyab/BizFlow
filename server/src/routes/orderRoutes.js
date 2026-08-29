@@ -1,5 +1,5 @@
 import express from 'express';
-import { newOrder, getAllOrders, getOrderById, updateOrderStatus, recordPayment } from '../controllers/orderControllers.js';
+import { newOrder, getAllOrders, getOrderById, updateOrderStatus, recordPayment, getPublicInvoice } from '../controllers/orderControllers.js';
 import { authenticate } from '../middlewares/authMiddleware.js';
 import { newOrderLimiter, getAllOrdersLimiter, OrderDetailsLimiter, OrderUpdateLimiter } from '../middlewares/ratelimitterMiddleware.js';
 
@@ -11,5 +11,7 @@ router.get("/getallorders", authenticate, getAllOrdersLimiter, getAllOrders);
 router.get("/:id", authenticate, OrderDetailsLimiter, getOrderById);
 router.patch("/:id/status", authenticate, OrderUpdateLimiter, updateOrderStatus);
 router.post("/recordpayment", authenticate, recordPayment);
+
+router.get('/public/invoice/:id', getPublicInvoice);
 
 export default router;

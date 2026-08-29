@@ -420,3 +420,41 @@ export const recordPayment = async (req, res) => {
         return res.status(500).json({ success: false, message: 'Internal server error' });
     }
 }
+
+export const getPublicInvoice = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const order = await prisma.order.findUnique({
+            where: { id: id },
+            include: {
+                customer: true,
+                items: { include: { product: { select: { name: true } } } },
+                payments: { orderBy: { createdAt: 'desc' } },
+                business: { 
+                    select: { 
+                        name: true, logoUrl: true, address: true, phone: true, email: true, currency: true 
+                    } 
+                }
+            }
+        });
+
+        if (!order) return res.status(404).json({ success: false, message: 'Invoice not found' });
+
+        const totalPaid = order.payments.reduce((sum, p) => sum + p.amount, 0);
+        const pendingBalance = order.totalAmount - totalPaid;
+
+        const formattedInvoice = {
+            ...order,
+            orderNumber: `ORD-${order.orderNumber || order.id.substring(0, 4)}`,
+            totalPaid,
+            pendingBalance: pendingBalance > 0 ? pendingBalance : 0
+        };
+
+        return res.status(200).json({ success: true, invoice: formattedInvoice });
+
+    } catch (error) {
+        console.error("Public Invoice Error:", error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+}
