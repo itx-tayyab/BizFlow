@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 import { sendInviteEmail } from '../utils/mailer.js';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 
 const prisma = new PrismaClient();
 
@@ -114,9 +115,22 @@ export const AcceptInvite = async (req, res) => {
       return newUser;
     });
 
+    const accessToken = jwt.sign(
+      {
+        id: result.id,
+        role: result.role,
+        businessId: result.businessId,
+      },
+      process.env.ACCESS_TOKEN_SECRET,
+      {
+        expiresIn: process.env.ACCESS_TOKEN_EXPIRATION,
+      }
+    );
+
     return res.status(201).json({
       success: true,
       message: "Account created successfully!",
+      accessToken,
       user: result
     });
 
